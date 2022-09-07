@@ -1,0 +1,4 @@
+mode: PDG              # PD/PDA/PDG/PDGA
+gamma: 0.02
+# split_mode: time
+# time_slot: 9
