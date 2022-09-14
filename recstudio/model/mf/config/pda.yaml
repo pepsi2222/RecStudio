@@ -1,4 +1,5 @@
-mode: PDG              # PD/PDA/PDG/PDGA
+algo: PDG              # PD/PDA/PDG/PDGA
 gamma: 0.02
+negative_count: 1
 # split_mode: time
 # time_slot: 9

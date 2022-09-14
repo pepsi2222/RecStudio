@@ -41,13 +41,6 @@ class SquareLoss(PointwiseLoss):
         else:
             return torch.mean(torch.square(label - pos_score))
 
-# class AccuracyLoss(PointwiseLoss):
-#     def forward(self, label, pos_score):
-#         if label.dim() > 1:
-#             return torch.mean(torch.mean(label == pos_score, dim=-1))
-#         else:
-#             return torch.mean(label == pos_score)
-
 class dCorLoss(PointwiseLoss):
     def forward(self, label, pos_score):
         if label.dim() > 1:
@@ -218,10 +211,19 @@ def l2_reg_loss_fn(*args):
 class MaskBPRLoss(BPRLoss):   
     def forward(self, mask, label, pos_score, log_pos_prob, neg_score, log_neg_prob):
         if not self.dns:
-            loss = F.logsigmoid(pos_score.view(*pos_score.shape, 1) - neg_score)
-            weight = F.softmax(torch.ones_like(neg_score), -1)
-            return -torch.mean(mask * (loss * weight).sum(-1))
+            if pos_score.dim() < neg_score.dim():
+                loss = F.logsigmoid(pos_score.view(*pos_score.shape, 1) - neg_score)
+                weight = F.softmax(torch.ones_like(neg_score), -1)
+                return -torch.mean((mask * loss * weight).sum(-1))
+            else:
+                loss = F.logsigmoid(pos_score - neg_score.view(*neg_score.shape, 1))
+                weight = F.softmax(torch.ones_like(pos_score), -1)
+                return -torch.mean((mask * loss * weight).sum(-1))
         else:
-            loss = -torch.mean(mask *
-                F.logsigmoid(pos_score - torch.max(neg_score, dim=-1)))
+            if pos_score.dim() < neg_score.dim():
+                loss = -torch.mean(mask *
+                    F.logsigmoid(pos_score - torch.max(neg_score, dim=-1)))
+            else:
+                loss = -torch.mean(mask *
+                    F.logsigmoid(torch.max(pos_score, dim=-1) - neg_score))
             return loss

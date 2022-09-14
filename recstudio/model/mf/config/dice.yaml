@@ -1,0 +1,17 @@
+dis_loss: l1 # l2 / dcor
+
+int_weight: 0.1
+pop_weight: 0.1
+dis_pen: 0.01
+
+margin_up: 40.0
+margin_down: 40.0
+pool: 40
+negative_count: 4
+
+adaptive: True
+margin_decay: 0.9
+loss_decay: 0.9
+
+excluding_hist: True
+batch_size: 256

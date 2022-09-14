@@ -102,7 +102,7 @@ class ExpoMF(basemodel.BaseRetriever):
     def _get_dataset_class():
         return ALSDataset
 
-    def _get_query_encoder(self, train_data):   #由于这个方法是em更新不是sgd，所以别的地方不用改query？
+    def _get_query_encoder(self, train_data):
         query_emb = torch.nn.Embedding(train_data.num_users, self.embed_dim, padding_idx=0)
         if not self.config['with_exposure_covariates']:
             return query_emb
@@ -127,12 +127,15 @@ class ExpoMF(basemodel.BaseRetriever):
                     self.item_emb = item_emb
                 def forward(self, batch):
                     items = self.item_emb(batch)
-                    return items, batch
+                    return torch.cat((items, batch.unsqueeze(-1)), dim=-1)
             return ExpoMFItemEncoder(item_emb)
 
     def _get_item_vector(self):
-        num_items = self.item_encoder.item_emb.weight.shape[0]
-        return self.item_encoder.item_emb.weight[1:], torch.arange(1, num_items)
+        if not self.config['with_exposure_covariates']:
+            return self.item_encoder.weight[1:]
+        else:
+            num_items = (self.item_encoder.item_emb.weight.shape[0]).unsqueeze(-1)
+            return torch.hstack((self.item_encoder.item_emb.weight[1:], torch.arange(1, num_items)))
 
     def _get_score_func(self):       
         if not self.config['with_exposure_covariates']:
@@ -144,7 +147,7 @@ class ExpoMF(basemodel.BaseRetriever):
                     self.mu_model = mu_model
                 def forward(self, query, items):
                     query, uid = query
-                    items, iid = items
+                    items, iid = items.split([items.shape[-1]-1, 1], dim=-1)
                     mu = self.mu_model.score_func(
                         self.mu_model.query_encoder(uid),
                         self.mu_model.item_encoder(iid)
@@ -153,12 +156,12 @@ class ExpoMF(basemodel.BaseRetriever):
             return ExpoMFScorer(self.mu_model)
         
     def _get_train_loaders(self, train_data):
-        loader = train_data.loader(
+        loader = train_data.train_loader(
             batch_size = self.config['batch_size'],
             shuffle = True, 
             num_workers = self.config['num_workers'], 
             drop_last = False)
-        loader_T = train_data.transpose().loader(
+        loader_T = train_data.transpose().train_loader(
             batch_size = self.config['batch_size'],
             shuffle = True, 
             num_workers = self.config['num_workers'], 
@@ -167,18 +170,14 @@ class ExpoMF(basemodel.BaseRetriever):
 
     def training_epoch(self, nepoch):
         trn_dataloaders, _ = self.current_epoch_trainloaders(nepoch)
-        i=0
+
         for loader in trn_dataloaders:                       
             for batch in loader:
-                # if batch[self.fuid].dim() == 1:
-                #     break
                 # data to device
                 batch = self._to_device(batch, self.device)               
                 # update latent user/item factors
                 a = self._expectation(batch)
                 self._maximization(batch, a)
-                # i=i+1
-                # print(i,a.all())
         
         if not self.config['with_exposure_covariates']:
             # update \mu_{i}; prior on \mu_{i} ~ Beta(alpha1, alpha2)

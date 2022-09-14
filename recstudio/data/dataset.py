@@ -754,7 +754,8 @@ class MFDataset(Dataset):
             dict: A dict contains different feature.
         """
         data = self._get_pos_data(index)
-        if self.eval_mode and 'user_hist' not in data:
+        if (self.eval_mode and 'user_hist' not in data) or \
+            (not self.eval_mode and 'user_hist' not in data and self.excluding_hist):
             user_count = self.user_count[data[self.fuid]].max()
             data['user_hist'] = self.user_hist[data[self.fuid]][:, 0:user_count]
         else:
@@ -788,7 +789,7 @@ class MFDataset(Dataset):
         return d
 
     def build(self, split_ratio=[0.8, 0.1, 0.1],
-              shuffle=True, split_mode='user_entry', fmeval=False, dataset_sampler=None, dataset_neg_count=None, **kwargs):
+              shuffle=True, split_mode='user_entry', fmeval=False, dataset_sampler=None, dataset_neg_count=None, excluding_hist=False, **kwargs):
         """Build dataset.
 
         Args:
@@ -807,6 +808,7 @@ class MFDataset(Dataset):
         self.fmeval = fmeval
         self.neg_sampling_count = dataset_neg_count
         self.sampler = dataset_sampler
+        self.excluding_hist = excluding_hist
         self._init_negative_sampler()
         return self._build(split_ratio, shuffle, split_mode, True, False)
 
