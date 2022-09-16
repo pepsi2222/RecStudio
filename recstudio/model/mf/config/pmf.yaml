@@ -1,2 +1,2 @@
-query_std: 0.1
-item_std: 0.1
+init_method: normal
+init_range: 0.1

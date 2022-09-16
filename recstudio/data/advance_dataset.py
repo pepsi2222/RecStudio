@@ -12,8 +12,8 @@ class ALSDataset(MFDataset):
     So the data provided should be ``<u, Iu>`` and ``<i, Ui>`` alternatively.
     """
 
-    def build(self, split_ratio, shuffle=True, split_mode='user_entry', excluding_hist=False, **kwargs):
-        self.excluding_hist = excluding_hist
+    def build(self, split_ratio, shuffle=True, split_mode='user_entry', return_hist=False, **kwargs):
+        self.return_hist = return_hist
         datasets = self._build(split_ratio, shuffle, split_mode, True, False)
         data_index = datasets[0].inter_feat_subset
         user_ids = self.inter_feat.get_col(self.fuid)[data_index]

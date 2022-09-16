@@ -13,5 +13,5 @@ adaptive: True
 margin_decay: 0.9
 loss_decay: 0.9
 
-excluding_hist: True
+return_hist: True
 batch_size: 256

@@ -3,7 +3,15 @@ import numpy as np
 from recstudio.ann.sampler import Sampler
 from recstudio.model.mf.bpr import BPR
 from recstudio.model import basemodel, loss_func
-import time
+
+r"""
+DICE
+#########
+
+Paper Reference:
+    Disentangling User Interest and Conformity for Recommendation with Causal Embedding (WWW'21)
+    https://doi.org/10.1145/3442381.3449788
+"""
 
 class DICE(BPR):               
         
@@ -23,31 +31,10 @@ class DICE(BPR):
         return parent_parser             
 
     def _get_query_encoder(self, train_data):
-        int = torch.nn.Embedding(train_data.num_users, self.embed_dim, padding_idx=0)
-        pop = torch.nn.Embedding(train_data.num_users, self.embed_dim, padding_idx=0)
-        class DICEQueryEncoder(torch.nn.Module):
-            def __init__(self, int, pop):
-                super().__init__()
-                self.int = int
-                self.pop = pop
-            def forward(self, batch):
-                return torch.cat((self.int(batch), self.pop(batch)), dim=-1)
-        return DICEQueryEncoder(int, pop)
+        return torch.nn.Embedding(train_data.num_users, 2 * self.embed_dim, padding_idx=0)
 
     def _get_item_encoder(self, train_data):
-        int = torch.nn.Embedding(train_data.num_items, self.embed_dim, padding_idx=0)
-        pop = torch.nn.Embedding(train_data.num_items, self.embed_dim, padding_idx=0)
-        class DICEItemEncoder(torch.nn.Module):
-            def __init__(self, int, pop):
-                super().__init__()
-                self.int = int
-                self.pop = pop
-            def forward(self, batch):
-                return torch.cat((self.int(batch), self.pop(batch)), dim=-1)
-        return DICEItemEncoder(int, pop)
-
-    def _get_item_vector(self):
-        return torch.hstack((self.item_encoder.int.weight[1:], self.item_encoder.pop.weight[1:]))
+        return torch.nn.Embedding(train_data.num_items, 2 * self.embed_dim, padding_idx=0)
     
     def _get_loss_func(self):
         class DICELoss(torch.nn.Module):
@@ -60,7 +47,7 @@ class DICE(BPR):
                 self.bprloss = loss_func.BPRLoss()
                 self.maskbprloss = loss_func.MaskBPRLoss() 
                 self.dis_criterion = dis_criterion
-            def adapt(self):
+            def _adapt(self):
                 self.int_weight = self.int_weight * self.loss_decay
                 self.pop_weight = self.pop_weight * self.loss_decay
             def forward(self, mask, pos_int_score, pos_pop_score, pos_click_score,
@@ -88,13 +75,13 @@ class DICE(BPR):
         elif self.config['dis_loss'].lower() == 'dcor':
             return loss_func.dCorLoss()
     
-    def adapt(self, current_epoch):
+    def _adapt(self, current_epoch):
         if not hasattr(self, 'last_epoch'):
             self.last_epoch = 0
         if current_epoch > self.last_epoch:
             self.last_epoch = current_epoch
-            self.loss_fn.adapt()
-            self.sampler.adapt()
+            self.loss_fn._adapt()
+            self.sampler._adapt()
 
     def training_step(self, batch, nepoch):
         self.adapt(nepoch)
@@ -112,8 +99,9 @@ class DICE(BPR):
                              "`sampler` is not none.")
 
         (_, neg_item_idx, _), query = self.sampling(batch=batch, num_neg=self.neg_count,
-                                                                            excluding_hist=self.config.get('excluding_hist', False),
-                                                                            method=self.config.get('sampling_method', 'none'), return_query=True)
+                                                    excluding_hist=self.config.get('excluding_hist', False) or 
+                                                                    self.config.get('return_hist', False),
+                                                    method=self.config.get('sampling_method', 'none'), return_query=True)
         query_int, query_pop = query.chunk(2, -1)
         neg_item_idx, mask = neg_item_idx
        
@@ -138,7 +126,7 @@ class DICE(BPR):
         output['mask'] = mask
         output['score'] = {'pos_int_score': pos_int_score, 'pos_pop_score': pos_pop_score, 'pos_click_score': pos_click_score,
                            'neg_int_score': neg_int_score, 'neg_pop_score': neg_pop_score, 'neg_click_score': neg_click_score}
-        output['query'] = {'query_int': query.chunk(2, -1)[0], 'query_pop': query.chunk(2, -1)[1]}
+        output['query'] = {'query_int': query_int, 'query_pop': query_pop}
         items = torch.vstack((pos_item_vec, neg_item_vec.view(-1, 2*self.embed_dim)))
         output['items'] = {'items_int': items.chunk(2, -1)[0], 'items_pop': items.chunk(2, -1)[1]}
         return output
@@ -152,7 +140,7 @@ class DICE(BPR):
                 self.margin_up = margin_up
                 self.margin_down = margin_down
                 self.margin_decay = margin_decay           
-            def adapt(self):
+            def _adapt(self):
                 self.margin_up = self.margin_decay * self.margin_up
                 self.margin_down = self.margin_decay * self.margin_down
             def forward(self, query, num_neg, pos_items=None, user_hist=None):
@@ -178,25 +166,21 @@ class DICE(BPR):
                         num_unpop_items = unpop_items.shape[0]
 
                         if num_pop_items < self.pool:
-                            for cnt in range(num_neg):
-                                idx = torch.randint(num_unpop_items, (1,))
-                                neg_items[u][cnt] = unpop_items[idx]
-                                mask[u][cnt] = False
+                            idx = torch.randint(num_unpop_items, (num_neg,))
+                            neg_items[u] = unpop_items[idx]
+                            mask[u] = False
                         elif num_unpop_items < self.pool:
-                            for cnt in range(num_neg):
-                                idx = torch.randint(num_pop_items, (1,))
-                                neg_items[u][cnt] = pop_items[idx]
-                                mask[u][cnt] = True
+                            idx = torch.randint(num_pop_items, (num_neg,))
+                            neg_items[u] = pop_items[idx]
+                            mask[u] = True
                         else:
-                            for cnt in range(num_neg):
-                                if torch.rand(1) < 0.5:
-                                    idx = torch.randint(num_pop_items, (1,))
-                                    neg_items[u][cnt] = pop_items[idx]
-                                    mask[u][cnt] = True
-                                else:
-                                    idx = torch.randint(num_unpop_items, (1,))
-                                    neg_items[u][cnt] = unpop_items[idx]
-                                    mask[u][cnt] = False
+                            idx = torch.randint(num_pop_items, (num_neg//2,))
+                            neg_items[u][:num_neg//2] = pop_items[idx]
+                            mask[u][:num_neg//2] = True
+                            
+                            idx = torch.randint(num_unpop_items, (num_neg - num_neg//2,))
+                            neg_items[u][num_neg//2:] = unpop_items[idx]
+                            mask[u][num_neg//2:] = False
 
                     neg_prob = self.compute_item_p(None, neg_items)
                     if pos_items is not None:

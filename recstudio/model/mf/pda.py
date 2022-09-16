@@ -1,8 +1,16 @@
-import inspect
 import torch
 import torch.nn.functional as F
 from recstudio.model.mf.bpr import BPR
-from recstudio.model import basemodel, scorer, loss_func
+from recstudio.model import basemodel, scorer
+
+r"""
+PDA
+#########
+
+Paper Reference:
+    Causal Intervention for Leveraging Popularity Bias in Recommendation (SIGIR'21)
+    https://doi.org/10.1145/3404835.3462875
+"""
 
 class PDA(BPR):               
         
@@ -14,7 +22,6 @@ class PDA(BPR):
         return parent_parser        
 
     def _get_item_encoder(self, train_data):
-        item_emb = super()._get_item_encoder(train_data)
         if self.config['algo'].upper()  == 'PDG' or 'PDGA':
             pop = (train_data.item_freq + 1) / (torch.sum(train_data.item_freq) + train_data.num_items)
             pop = (pop - pop.min()) / (pop.max() - pop.min())
@@ -22,20 +29,19 @@ class PDA(BPR):
         elif self.config['algo'].upper()  == 'PD' or 'PDA':
             NotImplementedError(f"{self.config['algo'] } is not implemented.")
 
-        class PDAItemEncoder(torch.nn.Module):
-            def __init__(self, item_emb, pop):
-                super().__init__()
-                self.item_emb = item_emb
+        class PDAItemEncoder(torch.nn.Embedding):
+            def __init__(self, pop, num_embeddings, embedding_dim, padding_idx=None):
+                super().__init__(num_embeddings, embedding_dim, padding_idx)
                 self.register_buffer('pop', pop)
             def forward(self, batch):
-                items = self.item_emb(batch)
+                items = super().forward(batch)
                 pop = self.pop[batch]
-                return torch.cat((items, pop), dim=-1)
+                return torch.cat((items, pop), dim = -1)
 
-        return PDAItemEncoder(item_emb, pop)
+        return PDAItemEncoder(pop, train_data.num_items, self.embed_dim, padding_idx=0)
 
     def _get_item_vector(self):
-        return torch.hstack((self.item_encoder.item_emb.weight[1:], self.item_encoder.pop[1:]))
+        return torch.hstack((self.item_encoder.weight[1:], self.item_encoder.pop[1:]))
 
     def _get_score_func(self):  
         class PDAScorer(scorer.InnerProductScorer):
@@ -53,45 +59,15 @@ class PDA(BPR):
                     return pop ** self.gamma * elu_
 
         return PDAScorer(self.config['algo'], self.config['gamma']) 
-    
-    def forward(self, batch, full_score, return_query=False, return_item=False, return_neg_item=False, return_neg_id=False):
-        output = {}
-        pos_items = self._get_item_feat(batch)
-        pos_item_vec = self.item_encoder(pos_items)
-        if self.sampler is not None:
-            if self.neg_count is None:
-                raise ValueError("`negative_count` value is required when "
-                                 "`sampler` is not none.")
 
-            (log_pos_prob, neg_item_idx, log_neg_prob), query = self.sampling(batch=batch, num_neg=self.neg_count,
-                                                                              excluding_hist=self.config.get('excluding_hist', False),
-                                                                              method=self.config.get('sampling_method', 'none'), return_query=True)
-            pos_score = self.score_func(query, pos_item_vec)
-            pos_score = pos_item_vec.split([pos_item_vec.shape[-1]-1, 1], dim=-1)[1] ** self.config['gamma'] * pos_score #
-            if batch[self.fiid].dim() > 1:
-                pos_score[batch[self.fiid] == 0] = -float('inf')
-
-            neg_items = self._get_item_feat(neg_item_idx)
-            neg_item_vec = self.item_encoder(neg_items)
-            neg_score = self.score_func(query, neg_item_vec)
-            neg_score = neg_item_vec.split([neg_item_vec.shape[-1]-1, 1], dim=-1)[1] ** self.config['gamma'] * neg_score #
-            output['score'] = {'pos_score': pos_score, 'log_pos_prob': log_pos_prob,
-                               'neg_score': neg_score, 'log_neg_prob': log_neg_prob}
-
-            if return_neg_item:
-                output['neg_item'] = neg_item_vec[0]                        #
-            if return_neg_id:
-                output['neg_id'] = neg_item_idx
-
-            # data_augmentation
-            if self.training and hasattr(self, 'data_augmentation'):
-                data_augmentation_args = {"batch": batch}
-                if 'query' in inspect.getargspec(self.data_augmentation).args:
-                        data_augmentation_args['query'] = query
-                output.update(self.data_augmentation(**data_augmentation_args))
-        
-        if return_query:
-            output['query'] = query
-        if return_item:
-            output['item'] = pos_item_vec.split([pos_item_vec.shape[-1]-1, 1], dim=-1)[0]   #                           #
-        return output
+    def training_step(self, batch):
+        output = self.forward(batch, False, return_item=True, return_neg_item=True)
+        score = output['score']
+        if self.config['algo'] == 'PD' or 'PDG':
+            score['pos_score'] = output['item'].split([output['item'].shape[-1]-1, 1], dim=-1)[1] ** self.config['gamma'] * \
+                                    score['pos_score']
+            score['neg_score'] = output['neg_item'].split([output['neg_item'].shape[-1]-1, 1], dim=-1)[1] ** self.config['gamma'] * \
+                                    score['neg_score']
+        score['label'] = batch[self.frating]
+        loss_value = self.loss_fn(**score)
+        return loss_value

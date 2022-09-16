@@ -4,6 +4,14 @@ from recstudio.model import basemodel, scorer, loss_func
 from recstudio.data.dataset import MFDataset
 from recstudio.data.advance_dataset import ALSDataset
 
+r"""
+ExpoMF
+#########
+
+Paper Reference:
+    Modeling User Exposure in Recommendation (WWW'16)
+    https://dl.acm.org/doi/10.1145/2872427.2883090
+"""
 
 class ExpoMF(basemodel.BaseRetriever):
     
@@ -13,20 +21,21 @@ class ExpoMF(basemodel.BaseRetriever):
         parent_parser.add_argument("--lambda_y", type=float, default=1.0, help='lambda_y for ExpoMF')
         parent_parser.add_argument("--lambda_theta", type=float, default=1e-5, help='lambda_theta for ExpoMF')
         parent_parser.add_argument("--lambda_beta", type=float, default=1e-5, help='lambda_beta for ExpoMF')
-        parent_parser.add_argument("--query_std", type=float, default=0.01, help='query std for PMF')
-        parent_parser.add_argument("--item_std", type=float, default=0.01, help='item std for PMF')
+        parent_parser.add_argument("--init_range", type=float, default=0.01, help='init std for PMF')
         parent_parser.add_argument("--init_mu", type=float, default=0.01, help='init mu for ExpoMF')
         parent_parser.add_argument("--with_exposure_covariates", type=bool, default=False, help='if there are exposure covariates or not')
         parent_parser.add_argument("--alpha1", type=float, default=1.0, help='alpha1 for ExpoMF')
         parent_parser.add_argument("--alpha2", type=float, default=1.0, help='alpha2 for ExpoMF')
-        parent_parser.add_argument("--init_std", type=float, default=0.01, help='init std for ExpoMF')
+        parent_parser.add_argument("--mu_init_range", type=float, default=0.01, help='init std for mu model in ExpoMF')
         return parent_parser                         
         
     def _init_model(self, train_data):
-        super()._init_model(train_data)   
-        self.a = torch.ones(train_data.num_users, train_data.num_items)
+        super()._init_model(train_data)
+        self.user_item_matrix = train_data.get_graph(0, form='csr')[0]  
+        self.register_buffer('a', torch.ones(train_data.num_users, train_data.num_items))
+        
         if not self.config['with_exposure_covariates']:
-            self.mu = self.config['init_mu'] * torch.ones(train_data.num_items)
+            self.register_buffer('mu', self.config['init_mu'] * torch.ones(train_data.num_items))
         else:
             class mu_model(basemodel.BaseRetriever):
 
@@ -36,8 +45,8 @@ class ExpoMF(basemodel.BaseRetriever):
 
                 def _init_parameter(self):
                     super()._init_parameter()
-                    torch.nn.init.normal_(self.query_encoder.psi.weight, mean=0, std=self.config['init_std'])
-                    torch.nn.init.constant_(self.query_encoder.psi_bias.weight, np.log(self.config['init_mu'] / (1 - self.config['init_mu'])))
+                    # TODO: How to use init.py when different parts of a module have differnt 'init_method'?          
+                    torch.nn.init.constant_(self.query_encoder.bias.weight, np.log(self.config['init_mu'] / (1 - self.config['init_mu'])))
                     self.item_encoder.weight.requires_grad = False
                 
                 def _get_item_encoder(self, train_data):
@@ -52,16 +61,23 @@ class ExpoMF(basemodel.BaseRetriever):
 
                 def _get_query_encoder(self, train_data):
                     # \psi, \psi_bias
-                    psi = torch.nn.Embedding(train_data.num_users, self.embed_dim, padding_idx=0)
-                    psi_bias = torch.nn.Embedding(train_data.num_users, 1)
-                    class muQueryEncoder(torch.nn.Module):
-                        def __init__(self, psi, psi_bias):
-                            super().__init__()
-                            self.psi = psi
-                            self.psi_bias = psi_bias
+                    # psi = torch.nn.Embedding(train_data.num_users, self.embed_dim, padding_idx=0)
+                    # psi_bias = torch.nn.Embedding(train_data.num_users, 1, padding_idx=0)
+                    # class muQueryEncoder(torch.nn.Module):
+                    #     def __init__(self, psi, psi_bias):
+                    #         super().__init__()
+                    #         self.psi = psi
+                    #         self.psi_bias = psi_bias
+                    #     def forward(self, batch):
+                    #         return self.psi(batch), self.psi_bias(batch)
+                    # return muQueryEncoder(psi, psi_bias)
+                    class muQueryEncoder(torch.nn.Embedding):
+                        def __init__(self, num_embeddings, embedding_dim, padding_idx=None):
+                            super().__init__(num_embeddings, embedding_dim, padding_idx)
+                            self.bias = torch.nn.Embedding(num_embeddings, 1, padding_idx)
                         def forward(self, batch):
-                            return self.psi(batch), self.psi_bias(batch)
-                    return muQueryEncoder(psi, psi_bias)
+                            return super().forward(batch), self.bias(batch)
+                    return muQueryEncoder(train_data.num_users, self.embed_dim, padding_idx=0)
 
                 def _get_score_func(self):
                     class muScorer(scorer.InnerProductScorer):
@@ -87,55 +103,39 @@ class ExpoMF(basemodel.BaseRetriever):
     
     def _init_parameter(self):
         super()._init_parameter()
-        if not self.config['with_exposure_covariates']:
-            torch.nn.init.normal_(self.query_encoder.weight, mean=0, std=self.config['query_std'])
-            torch.nn.init.normal_(self.item_encoder.weight, mean=0, std=self.config['item_std'])
-            self.query_encoder.weight.requires_grad = False
-            self.item_encoder.weight.requires_grad = False      
-        else:
-            torch.nn.init.normal_(self.query_encoder.query_emb.weight, mean=0, std=self.config['query_std'])
-            torch.nn.init.normal_(self.item_encoder.item_emb.weight, mean=0, std=self.config['item_std'])
-            self.query_encoder.query_emb.weight.requires_grad = False
-            self.item_encoder.item_emb.weight.requires_grad = False
+        self.query_encoder.weight.requires_grad = False
+        self.item_encoder.weight.requires_grad = False
 
     @staticmethod
     def _get_dataset_class():
         return ALSDataset
 
     def _get_query_encoder(self, train_data):
-        query_emb = torch.nn.Embedding(train_data.num_users, self.embed_dim, padding_idx=0)
         if not self.config['with_exposure_covariates']:
-            return query_emb
+            return torch.nn.Embedding(train_data.num_users, self.embed_dim, padding_idx=0)
         else:
-            class ExpoMFQueryEncoder(torch.nn.Module):
-                def __init__(self, query_emb):
-                    super().__init__()
-                    self.query_emb = query_emb
+            class ExpoMFQueryEncoder(torch.nn.Embedding):
                 def forward(self, batch):
-                    query = self.query_emb(batch)
+                    query = super().forward(batch)
                     return query, batch
-            return ExpoMFQueryEncoder(query_emb)
+            return ExpoMFQueryEncoder(train_data.num_users, self.embed_dim, padding_idx=0)
 
     def _get_item_encoder(self, train_data):
-        item_emb = torch.nn.Embedding(train_data.num_items, self.embed_dim, padding_idx=0)
         if not self.config['with_exposure_covariates']:
-            return item_emb
+            return torch.nn.Embedding(train_data.num_items, self.embed_dim, padding_idx=0)
         else:
-            class ExpoMFItemEncoder(torch.nn.Module):
-                def __init__(self, item_emb):
-                    super().__init__()
-                    self.item_emb = item_emb
+            class ExpoMFItemEncoder(torch.nn.Embedding):
                 def forward(self, batch):
-                    items = self.item_emb(batch)
+                    items = super().forward(batch)
                     return torch.cat((items, batch.unsqueeze(-1)), dim=-1)
-            return ExpoMFItemEncoder(item_emb)
+            return ExpoMFItemEncoder(train_data.num_items, self.embed_dim, padding_idx=0)
 
     def _get_item_vector(self):
         if not self.config['with_exposure_covariates']:
             return self.item_encoder.weight[1:]
         else:
-            num_items = (self.item_encoder.item_emb.weight.shape[0]).unsqueeze(-1)
-            return torch.hstack((self.item_encoder.item_emb.weight[1:], torch.arange(1, num_items)))
+            num_items = (self.item_encoder.weight.shape[0]).unsqueeze(-1)
+            return torch.hstack((self.item_encoder.weight[1:], torch.arange(1, num_items)))
 
     def _get_score_func(self):       
         if not self.config['with_exposure_covariates']:
@@ -150,8 +150,7 @@ class ExpoMF(basemodel.BaseRetriever):
                     items, iid = items.split([items.shape[-1]-1, 1], dim=-1)
                     mu = self.mu_model.score_func(
                         self.mu_model.query_encoder(uid),
-                        self.mu_model.item_encoder(iid)
-                    )
+                        self.mu_model.item_encoder(iid))
                     return mu * super().forward(query, items)
             return ExpoMFScorer(self.mu_model)
         
@@ -166,62 +165,50 @@ class ExpoMF(basemodel.BaseRetriever):
             shuffle = True, 
             num_workers = self.config['num_workers'], 
             drop_last = False)
-        return [loader, loader_T]            
+        return [loader, loader_T]     
+
+    def current_epoch_trainloaders(self, nepoch):
+        return self.trainloaders[nepoch % len(self.trainloaders)], False       
 
     def training_epoch(self, nepoch):
-        trn_dataloaders, _ = self.current_epoch_trainloaders(nepoch)
-
-        for loader in trn_dataloaders:                       
-            for batch in loader:
-                # data to device
-                batch = self._to_device(batch, self.device)               
-                # update latent user/item factors
-                a = self._expectation(batch)
-                self._maximization(batch, a)
-        
+        super().training_epoch(nepoch)       
         if not self.config['with_exposure_covariates']:
             # update \mu_{i}; prior on \mu_{i} ~ Beta(alpha1, alpha2)
             self.mu = (self.config['alpha1'] + torch.sum(self.a, dim=0) - 1) / \
                     (self.config['alpha1'] + self.config['alpha2'] + self.a.shape[0] - 2)
         else:
             # update user exposure factors \psi and \psi_bias with mini-batch SGD      
-            self.mu_model.fit(*self.mu_model.datasets[:2])            
-                                             
+            self.mu_model.fit(*self.mu_model.datasets[:2])                       
         return torch.tensor(0.)
+
+    def training_step(self, batch):
+        a = self._expectation(batch)
+        self._maximization(batch, a)
     
     def _expectation(self, batch):
         """
         Compute the posterior of exposure latent variables a_{ui}
         """
         if self.config['with_exposure_covariates']:
-            mu = torch.sigmoid(
-                self.mu_model.query_encoder[self.mu_model._get_query_feat(batch)] * \
-                self.mu_model.item_encoder[self.mu_model._get_item_feat(batch)] + \
-                self.mu_model.psi_bias[batch[self.fuid]])
-        else:
-            mu = self.mu[batch[self.fiid]]
-            if batch[self.fuid].dim() == 1:
-                P_y0_given_a1 = np.sqrt(self.config['lambda_y'] / 2 * torch.pi) * \
-                        torch.exp(-self.config['lambda_y'] * \
-                        torch.bmm(self.item_encoder(self._get_item_feat(batch)),                  # B x N x D
-                                self.query_encoder(self._get_query_feat(batch)).unsqueeze(-1))    # B x D -> B x D x 1
-                                .squeeze(-1)    
-                                **2 / 2)                              
-            else:
-                mu = mu.expand(batch[self.fuid].shape[1], mu.shape[0]).transpose(0, 1)
-                P_y0_given_a1 = np.sqrt(self.config['lambda_y'] / 2 * torch.pi) * \
-                        torch.exp(-self.config['lambda_y'] * \
-                        torch.bmm(self.query_encoder(self._get_query_feat(batch)),              # B x N x D
-                                self.item_encoder(self._get_item_feat(batch)).unsqueeze(-1))    # B x D -> B x D x 1
-                                .squeeze(-1)    
-                                **2 / 2)
-                        
-        mu = self._to_device(mu, self.device)        
-        a = (P_y0_given_a1 + 1e-8) / \
-            (P_y0_given_a1 + 1e-8 + (1 - mu) / mu)        
-        nnz = batch[self.frating].nonzero() 
-        for idx in nnz:
-            i, j = idx[0], idx[1]
+            mu = self.mu_model.score_func(self.mu_model.query_encoder(self.mu_model._get_query_feat(batch)),
+                                        self.mu_model.item_encoder(self.mu_model._get_item_feat(batch)))
+        elif batch[self.fuid].dim() == 1:
+            mu = self.mu
+            P_y0_given_a1 = np.sqrt(self.config['lambda_y'] / 2 * torch.pi) * \
+                            torch.exp(-self.config['lambda_y'] * 
+                                (self.query_encoder(self._get_query_feat(batch)) @  # B x D
+                                self.item_encoder.weight.transpose(0, 1))           # D x num_items
+                                **2 / 2)                                            # -> B x num_items
+        else: 
+            mu = self.mu[batch[self.fiid]].unsqueeze(-1)
+            P_y0_given_a1 = np.sqrt(self.config['lambda_y'] / 2 * torch.pi) * \
+                            torch.exp(-self.config['lambda_y'] * 
+                                (self.item_encoder(self._get_item_feat(batch)) @  # B x D
+                                self.query_encoder.weight.transpose(0, 1))          # D x num_users
+                                **2 / 2)                                            # -> B x num_users
+                              
+        a = (P_y0_given_a1 + 1e-8) / (P_y0_given_a1 + 1e-8 + (1 - mu) / mu)        
+        for i, j in batch[self.frating].nonzero():
             a[i, j] = torch.tensor(1.)
 
         # update self.a
@@ -229,45 +216,33 @@ class ExpoMF(basemodel.BaseRetriever):
             for i, uid in enumerate(batch[self.fuid]):
                 for j, iid  in enumerate(batch[self.fiid][i]):
                     self.a[uid, iid] = a[i, j]
-        else:
-            for i, iid in enumerate(batch[self.fiid]):
-                for j, uid  in enumerate(batch[self.fuid][i]):
-                    self.a[uid, iid] = a[i, j]
-        return a                                                                            # B x N         
+        return a     
     
     def _maximization(self, batch, a):
         """
         Update latent factors theta and beta
         """
         if batch[self.fuid].dim() == 1:
-            beta_betaT = torch.zeros(batch[self.frating].shape[0], batch[self.frating].shape[1], 
-                                    self.embed_dim, self.embed_dim, device=self.device)    # B x N x D x D
-            item_embeddings = self.item_encoder(self._get_item_feat(batch))                        
-            for i in range(batch[self.frating].shape[0]):
-                for j in range(batch[self.frating].shape[1]):
-                    beta_betaT[i, j] = item_embeddings[i, j].view(-1, 1) @ \
-                        item_embeddings[i, j].view(1, -1) 
-            A = self.config['lambda_y'] * torch.sum(
-                a.unsqueeze(-1).unsqueeze(-1) * beta_betaT
-                , dim = 1) + \
-                self.config['lambda_theta'] * torch.eye(self.embed_dim, device=self.device)
-            B = self.config['lambda_y'] * torch.sum(                                        # B x D
-                (a * batch[self.frating]).unsqueeze(-1) *                                   # B x N -> B x N x 1
-                self.item_encoder(self._get_item_feat(batch)), dim = 1)                     # B x N x D
-            self.query_encoder.weight[batch[self.fuid]] = torch.linalg.solve(A, B)
+            R = self.user_item_matrix
+            for i, uid in enumerate(batch[self.fuid]):
+                A = self.config['lambda_y'] * \
+                    (a[i] * self.item_encoder.weight.transpose(0, 1)) @ \
+                    self.item_encoder.weight + \
+                    self.config['lambda_theta'] * torch.eye(self.embed_dim, device=self.device)     # D x D
+                y, iids = R.data[R.indptr[uid] : R.indptr[uid + 1]], R.indices[R.indptr[uid] : R.indptr[uid + 1]]
+                y = self._to_device(torch.from_numpy(y), self.device)
+                B = self.config['lambda_y'] * ((a[i][iids] * y) @ \
+                    self.item_encoder.weight[iids]).unsqueeze(-1)                                   # D x 1
+                self.query_encoder.weight[uid] = torch.linalg.solve(A, B).squeeze(-1)
         else:
-            theta_thetaT = torch.zeros(batch[self.frating].shape[0], batch[self.frating].shape[1], 
-                                        self.embed_dim, self.embed_dim, device=self.device) # B x N x D x D
-            user_embeddings = self.query_encoder(self._get_query_feat(batch))                             
-            for i in range(batch[self.frating].shape[0]):
-                for j in range(batch[self.frating].shape[1]):
-                    theta_thetaT[i, j] = user_embeddings[i, j].view(-1, 1) @ \
-                        user_embeddings[i, j].view(1, -1) 
-            A = self.config['lambda_y'] * torch.sum(
-                a.unsqueeze(-1).unsqueeze(-1) * theta_thetaT
-                , dim = 1) + \
-                self.config['lambda_beta'] * torch.eye(self.embed_dim, device=self.device)
-            B = self.config['lambda_y'] * torch.sum(                                        # B x D
-                (a * batch[self.frating]).unsqueeze(-1) *                                   # B x N -> B x N x 1
-                self.query_encoder(self._get_query_feat(batch)), dim = 1)                   # B x N x D 
-            self.item_encoder.weight[batch[self.fiid]] = torch.linalg.solve(A, B)              
+            R = self.user_item_matrix.T
+            for i, iid in enumerate(batch[self.fiid]):
+                A = self.config['lambda_y'] * \
+                    (a[i] * self.query_encoder.weight.transpose(0, 1)) @ \
+                    self.query_encoder.weight + \
+                    self.config['lambda_beta'] * torch.eye(self.embed_dim, device=self.device)      # D x D
+                y, uids = R.data[R.indptr[iid] : R.indptr[iid + 1]], R.indices[R.indptr[iid] : R.indptr[iid + 1]]
+                y = self._to_device(torch.from_numpy(y), self.device)
+                B = self.config['lambda_y'] * ((a[i][uids] * y) @ \
+                    self.query_encoder.weight[uids]).unsqueeze(-1)                                  # D x 1
+                self.item_encoder.weight[iid] = torch.linalg.solve(A, B).squeeze(-1)              

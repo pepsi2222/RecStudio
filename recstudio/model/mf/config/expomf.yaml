@@ -4,14 +4,16 @@ batch_size: 128
 lambda_y: 1.0
 lambda_theta: 1e-5
 lambda_beta: 1e-5
-query_std: 0.01
-item_std: 0.01
+
+init_method: normal
+init_range: 0.01
+
 init_mu: 0.01
 with_exposure_covariates: False
 alpha1: 1.0
 alpha2: 1.0
 
-init_std: 0.01
-
 mu_model_batch_size: 10
+mu_init_method: normal
+mu_init_range: 0.01
 
