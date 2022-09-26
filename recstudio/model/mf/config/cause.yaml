@@ -1,0 +1,3 @@
+method: prod-c # avg/prod-t/prod-c
+dis_loss: l1  # l1/l2
+dis_pen: 1.0

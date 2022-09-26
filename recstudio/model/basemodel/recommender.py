@@ -17,7 +17,7 @@ import torch.multiprocessing as mp
 from recstudio.model import init, basemodel, loss_func
 from recstudio.utils import callbacks
 from recstudio.utils.utils import color_dict, seed_everything, parser_yaml, get_model
-from recstudio.data.dataset import (MFDataset, CombinedLoaders)
+from recstudio.data.dataset import (MFDataset, CombinedLoaders, ConcatedLoaders)
 
 
 class Recommender(torch.nn.Module, abc.ABC):
@@ -227,10 +227,12 @@ class Recommender(torch.nn.Module, abc.ABC):
         Returns:
             list or dict or Dataloader : the train loaders used in the current epoch
             bool : whether to combine the train loaders or use them alternately in one epoch.
+            bool : whether to concat the train loaders in one epoch.
         """
         # use nepoch to config current trainloaders
         combine = False
-        return self.trainloaders, combine
+        concat = True
+        return self.trainloaders, combine, concat
 
     def current_epoch_optimizers(self, nepoch) -> List:
         # use nepoch to config current optimizers
@@ -538,10 +540,12 @@ class Recommender(torch.nn.Module, abc.ABC):
         output_list = []
         optimizers = self.current_epoch_optimizers(nepoch)
 
-        trn_dataloaders, combine = self.current_epoch_trainloaders(nepoch)
+        trn_dataloaders, combine, concat = self.current_epoch_trainloaders(nepoch)
         if isinstance(trn_dataloaders, List) or isinstance(trn_dataloaders, Tuple):
             if combine:
                 trn_dataloaders = [CombinedLoaders(list(trn_dataloaders))]
+            elif concat:
+                trn_dataloaders = [ConcatedLoaders(list(trn_dataloaders))]
         else:
             trn_dataloaders = [trn_dataloaders]
 

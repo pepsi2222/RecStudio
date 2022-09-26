@@ -26,3 +26,6 @@ class PMF(basemodel.BaseRetriever):
 
     def _get_loss_func(self):
         return loss_func.SquareLoss()
+
+    def _get_sampler(self, train_data):
+        return None
