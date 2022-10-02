@@ -134,7 +134,7 @@ class ExpoMF(basemodel.BaseRetriever):
         if not self.config['with_exposure_covariates']:
             return self.item_encoder.weight[1:]
         else:
-            num_items = (self.item_encoder.weight.shape[0]).unsqueeze(-1)
+            num_items = (self.item_encoder.num_embeddings).unsqueeze(-1)
             return torch.hstack((self.item_encoder.weight[1:], torch.arange(1, num_items)))
 
     def _get_score_func(self):       
@@ -168,7 +168,7 @@ class ExpoMF(basemodel.BaseRetriever):
         return [loader, loader_T]     
 
     def current_epoch_trainloaders(self, nepoch):
-        return self.trainloaders[nepoch % len(self.trainloaders)], False       
+        return self.trainloaders[nepoch % len(self.trainloaders)], False, False       
 
     def training_epoch(self, nepoch):
         super().training_epoch(nepoch)       

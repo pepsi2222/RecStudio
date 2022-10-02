@@ -19,6 +19,7 @@ class CausE(PMF):
         parent_parser.add_argument("--method", type=str, default='prod-c', help='setups of incorporating the exploration data')
         parent_parser.add_argument("--dis_pen", type=float, default=1.0, help='discrepency penalty')
         parent_parser.add_argument("--dis_loss", type=str, default='l1', help='discrepency between the two product representations')
+        parent_parser.add_argument("--split_mode", type=str, default='skew', help='setups of splitting dataset ')
         return parent_parser             
 
     def _get_item_encoder(self, train_data):
