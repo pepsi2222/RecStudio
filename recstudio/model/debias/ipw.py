@@ -4,7 +4,7 @@ from recstudio.model.module import propensity
 from recstudio.data.advance_dataset import ALSDataset
 
 r"""
-ExpoMF
+IPW
 #########
 
 Paper Reference:

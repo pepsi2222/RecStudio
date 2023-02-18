@@ -4,23 +4,23 @@ from recstudio.model.fm.lr import LR
 from recstudio.utils import get_model
 from recstudio.utils import get_model, color_dict_normal, set_color, get_logger
 
-def get_propensity(config) -> torch.nn.Module:
-    if config['propensity_estimation'].lower() == "naive_bayes":
-        return NaiveBayes()
-    elif config['propensity_estimation'].lower() == "logistic_regression":
-        _, model_conf = get_model('LR')
-        for k, v in config.items():
-            if k.startswith('p_'):
-                model_conf.update({k[2:]: v})
-        model = LR(model_conf)
-        model.logger.info(f"\n{set_color('P-Model Config', 'green')}: \n\n" + color_dict_normal(model_conf, False))
-        return model
-    elif config['propensity_estimation'].lower() == "popularity":
-        return Popularity()
-    elif config['propensity_estimation'].lower() == "poisson_factorization":
-        return PoissonFactorization()
-    else:
-        raise ValueError(f"{config['propensity_estimation']} is not supportable.")          
+# def get_propensity(config) -> torch.nn.Module:
+#     if config['propensity_estimation'].lower() == "naive_bayes":
+#         return NaiveBayes()
+#     elif config['propensity_estimation'].lower() == "logistic_regression":
+#         _, model_conf = get_model('LR')
+#         for k, v in config.items():
+#             if k.startswith('p_'):
+#                 model_conf.update({k[2:]: v})
+#         model = LR(model_conf)
+#         model.logger.info(f"\n{set_color('P-Model Config', 'green')}: \n\n" + color_dict_normal(model_conf, False))
+#         return model
+#     elif config['propensity_estimation'].lower() == "popularity":
+#         return Popularity()
+#     elif config['propensity_estimation'].lower() == "poisson_factorization":
+#         return PoissonFactorization()
+#     else:
+#         raise ValueError(f"{config['propensity_estimation']} is not supportable.")          
               
 class NaiveBayes(torch.nn.Module):
     """get propensity by naive bayes method.

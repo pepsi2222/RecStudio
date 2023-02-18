@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from recstudio.model.mf.bpr import BPR
 from recstudio.model import basemodel, scorer
+from recstudio.model import DebiasedModel
 
 r"""
 PDA
@@ -12,7 +13,7 @@ Paper Reference:
     https://doi.org/10.1145/3404835.3462875
 """
 
-class PDA(BPR):               
+class PDA(DebiasedModel, BPR):               
         
     def add_model_specific_args(parent_parser):
         parent_parser = basemodel.Recommender.add_model_specific_args(parent_parser)
