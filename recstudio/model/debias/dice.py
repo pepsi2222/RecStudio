@@ -2,7 +2,8 @@ import torch
 import numpy as np
 from recstudio.ann.sampler import Sampler
 from recstudio.model.mf.bpr import BPR
-from recstudio.model import basemodel, loss_func
+from recstudio.model import loss_func
+from recstudio.model.basemodel import DebiasedRetriever
 
 r"""
 DICE
@@ -13,123 +14,74 @@ Paper Reference:
     https://doi.org/10.1145/3442381.3449788
 """
 
-class DICE(BPR):               
+class DICE(DebiasedRetriever):               
         
     def add_model_specific_args(parent_parser):
         parent_parser = basemodel.Recommender.add_model_specific_args(parent_parser)
         parent_parser.add_argument_group('DICE')
-        parent_parser.add_argument("--dis_loss", type=str, default='l1', help='discrepency loss function')
+        parent_parser.add_argument("--discrepancy", type=str, default='l1', help='discrepency loss function')
         parent_parser.add_argument("--int_weight", type=float, default=0.1, help='weight for interest term in the loss function')
         parent_parser.add_argument("--pop_weight", type=float, default=0.1, help='weight for popularity term in the loss function')
-        parent_parser.add_argument("--dis_pen", type=float, default=0.01, help='discrepency penalty')
+        parent_parser.add_argument("--dis_penalty", type=float, default=0.01, help='discrepency penalty')
         parent_parser.add_argument("--margin_up", type=float, default=40.0, help='margin for negative but more popular sampling')
         parent_parser.add_argument("--margin_down", type=float, default=40.0, help='margin for negative and less popular sampling')
         parent_parser.add_argument("--pool", type=int, default=40, help='pool for negative sampling')
         parent_parser.add_argument("--adaptive", type=bool, default=True, help='adapt hyper-parameters or not')
         parent_parser.add_argument("--margin_decay", type=float, default=0.9, help='decay of margin')
         parent_parser.add_argument("--loss_decay", type=float, default=0.9, help='decay of loss')
-        return parent_parser             
-
-    def _get_query_encoder(self, train_data):
-        return torch.nn.Embedding(train_data.num_users, 2 * self.embed_dim, padding_idx=0)
-
-    def _get_item_encoder(self, train_data):
-        return torch.nn.Embedding(train_data.num_items, 2 * self.embed_dim, padding_idx=0)
+        return parent_parser  
     
     def _get_loss_func(self):
-        class DICELoss(torch.nn.Module):
-            def __init__(self, int_weight, pop_weight, loss_decay, dis_pen, dis_criterion):
-                super().__init__()
-                self.int_weight = int_weight
-                self.pop_weight = pop_weight
-                self.loss_decay = loss_decay
-                self.dis_pen = dis_pen
-                self.bprloss = loss_func.BPRLoss()
-                self.maskbprloss = loss_func.MaskBPRLoss() 
-                self.dis_criterion = dis_criterion
-            def _adapt(self):
-                self.int_weight = self.int_weight * self.loss_decay
-                self.pop_weight = self.pop_weight * self.loss_decay
-            def forward(self, mask, pos_int_score, pos_pop_score, pos_click_score,
-                                    neg_int_score, neg_pop_score, neg_click_score,
-                                    query_int, query_pop, items_int, items_pop):
-                loss_int = self.maskbprloss(mask=mask, pos_score=pos_int_score, neg_score=neg_int_score,
-                                            label=None, log_pos_prob=None, log_neg_prob=None)                  
-                loss_pop = self.maskbprloss(mask=mask, pos_score=neg_pop_score, neg_score=pos_pop_score,
-                                            label=None, log_pos_prob=None, log_neg_prob=None) + \
-                        self.maskbprloss(mask=~mask, pos_score=pos_pop_score, neg_score=neg_pop_score,
-                                        label=None, log_pos_prob=None, log_neg_prob=None)
-                loss_click = self.bprloss(pos_score=pos_click_score, neg_score=neg_click_score, 
-                                        label=None, log_pos_prob=None, log_neg_prob=None)
-                dis_loss = self.dis_criterion(query_int, query_pop) + self.dis_criterion(items_int, items_pop)
-                return self.int_weight * loss_int + self.pop_weight * loss_pop + \
-                        loss_click - self.dis_pen * dis_loss
-        return DICELoss(self.config['int_weight'], self.config['pop_weight'], self.config['loss_decay'],
-                        self.config['dis_pen'], self._get_discrepancy_criterion())        
+        return loss_func.BPRLoss()    
 
-    def _get_discrepancy_criterion(self):
-        if self.config['dis_loss'].lower() == 'l1':
-            return loss_func.L1Loss()
-        elif self.config['dis_loss'].lower() == 'l2':
-            return loss_func.SquareLoss()
-        elif self.config['dis_loss'].lower() == 'dcor':
-            return loss_func.dCorLoss()
+    def _get_final_loss(propensity, loss : dict, output : dict):
+        query_int = output['interest']['query']
+        query_con = output['conformity']['query']
+        pos_item_int = output['interest']['item']
+        pos_item_con = output['conformity']['item']
+        neg_item_int = output['interest']['neg_item']
+        neg_item_con = output['conformity']['neg_item']
+        item_int = torch.vstack((pos_item_int, 
+                    neg_item_int.view(-1, pos_item_int.shape[1])))
+        item_con = torch.vstack((pos_item_con, 
+                    neg_item_con.view(-1, pos_item_con.shape[1])))
+        loss_dis = self.discrepancy(query_int, query_con) + \
+                            self.discrepancy(item_int, item_con)
+
+        query = torch.vstack((query_int, query_con))
+        pos_item = torch.vstack((pos_item_int, pos_item_con))
+        neg_item = torch.vstack((neg_item_int, neg_item_con))
+        pos_click_score = self.score_func(query, pos_item)
+        neg_click_score = self.score_func(query, neg_item)
+        loss_click = self.loss_fn(
+            pos_score=pos_click_score, neg_score=neg_click_score, 
+            label=None, log_pos_prob=None, log_neg_prob=None)
+
+        loss_int = torch.mean(output['mask'] * loss['interest'])
+        loss_con = torch.mean(~output['mask'] * loss['conformity']) + \
+                torch.mean(output['mask'] * self.backbone['conformity'].loss_fn(
+                    pos_score=output['conformity']['score']['neg_score'], 
+                    neg_score=output['conformity']['score']['pos_score'],
+                    label=None, log_pos_prob=None, log_neg_prob=None
+                ))
+
+        return self.int_weight * loss_int + self.pop_weight * loss_pop + \
+                        loss_click - self.dis_pen * loss_dis
     
     def _adapt(self, current_epoch):
         if not hasattr(self, 'last_epoch'):
             self.last_epoch = 0
+            self.int_weight = self.config['int_weight']
+            self.con_weight = self.config['con_weight']
         if current_epoch > self.last_epoch:
             self.last_epoch = current_epoch
-            self.loss_fn._adapt()
+            self.int_weight = self.int_weight * self.config['loss_decay']
+            self.pop_weight = self.pop_weight * self.config['loss_decay']
             self.sampler._adapt()
 
     def training_step(self, batch, nepoch):
-        self.adapt(nepoch)
-        output = self.forward(batch)
-        mask, score, query, items = output['mask'], output['score'], output['query'], output['items']
-        loss_value = self.loss_fn(mask, **score, **query, **items)
-        return loss_value
-
-    def forward(self, batch):
-        output = {}
-        pos_items = self._get_item_feat(batch)
-        pos_item_vec = self.item_encoder(pos_items)
-        if self.neg_count is None:
-            raise ValueError("`negative_count` value is required when "
-                             "`sampler` is not none.")
-
-        (_, neg_item_idx, _), query = self.sampling(batch=batch, num_neg=self.neg_count,
-                                                    excluding_hist=self.config.get('excluding_hist', False) or 
-                                                                    self.config.get('return_hist', False),
-                                                    method=self.config.get('sampling_method', 'none'), return_query=True)
-        query_int, query_pop = query.chunk(2, -1)
-        neg_item_idx, mask = neg_item_idx
-       
-        pos_item_int, pos_item_pop = pos_item_vec.chunk(2, -1)
-        pos_int_score = self.score_func(query_int, pos_item_int)
-        pos_pop_score = self.score_func(query_pop, pos_item_pop)
-        pos_click_score = self.score_func(query, pos_item_vec)
-
-        if batch[self.fiid].dim() > 1:
-            pos_int_score[batch[self.fiid] == 0] = -float('inf')
-            pos_pop_score[batch[self.fiid] == 0] = -float('inf')
-            pos_click_score[batch[self.fiid] == 0] = -float('inf')
-
-        neg_items = self._get_item_feat(neg_item_idx)
-        neg_item_vec = self.item_encoder(neg_items)
-
-        neg_item_int, neg_item_pop = neg_item_vec.chunk(2, -1)
-        neg_int_score = self.score_func(query_int, neg_item_int)
-        neg_pop_score = self.score_func(query_pop, neg_item_pop)
-        neg_click_score = self.score_func(query, neg_item_vec)
-
-        output['mask'] = mask
-        output['score'] = {'pos_int_score': pos_int_score, 'pos_pop_score': pos_pop_score, 'pos_click_score': pos_click_score,
-                           'neg_int_score': neg_int_score, 'neg_pop_score': neg_pop_score, 'neg_click_score': neg_click_score}
-        output['query'] = {'query_int': query_int, 'query_pop': query_pop}
-        items = torch.vstack((pos_item_vec, neg_item_vec.view(-1, 2*self.embed_dim)))
-        output['items'] = {'items_int': items.chunk(2, -1)[0], 'items_pop': items.chunk(2, -1)[1]}
-        return output
+        self._adapt(nepoch)
+        return super().training_step(batch, nepoch)
         
     def _get_sampler(self, train_data):
         class PopularSamplerWithMargin(Sampler):
@@ -185,9 +137,9 @@ class DICE(BPR):
                     neg_prob = self.compute_item_p(None, neg_items)
                     if pos_items is not None:
                         pos_prob = self.compute_item_p(None, pos_items)
-                        return pos_prob, (neg_items, mask), neg_prob
+                        return pos_prob, neg_items, (mask, neg_prob)
                     else:
-                        return (neg_items, mask), neg_prob
+                        return neg_items, (mask, neg_prob)
                                                         
             def compute_item_p(self, query, pos_items):
                 return torch.zeros_like(pos_items)
