@@ -1,4 +1,16 @@
 method: prod-c # avg/prod-t/prod-c
-dis_loss: l1  # l1/l2
-dis_pen: 1.0
-split_mode: skew # reg/skew
+discrepancy: l1  # l1/l2
+dis_penalty: 1.0
+data_mode: skew # reg/skew
+
+co_sampling: False
+
+backbone:
+
+  control:
+    model: PMF
+    loss_reduction: mean
+
+  treatment:
+    model: PMF
+    loss_reduction: ~

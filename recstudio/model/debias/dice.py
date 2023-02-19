@@ -1,8 +1,7 @@
 import torch
 import numpy as np
 from recstudio.ann.sampler import Sampler
-from recstudio.model.mf.bpr import BPR
-from recstudio.model import loss_func
+from recstudio.model import basemodel, loss_func, scorer
 from recstudio.model.basemodel import DebiasedRetriever
 
 r"""
@@ -31,10 +30,13 @@ class DICE(DebiasedRetriever):
         parent_parser.add_argument("--loss_decay", type=float, default=0.9, help='decay of loss')
         return parent_parser  
     
+    def _get_score_func(self):
+        return scorer.InnerProductScorer()
+    
     def _get_loss_func(self):
         return loss_func.BPRLoss()    
 
-    def _get_final_loss(propensity, loss : dict, output : dict):
+    def _get_final_loss(self, propensity, loss : dict, output : dict):
         query_int = output['interest']['query']
         query_con = output['conformity']['query']
         pos_item_int = output['interest']['item']
@@ -66,8 +68,8 @@ class DICE(DebiasedRetriever):
                     label=None, log_pos_prob=None, log_neg_prob=None
                 ))
 
-        return self.int_weight * loss_int + self.pop_weight * loss_pop + \
-                loss_click - self.dis_pen * loss_dis
+        return self.int_weight * loss_int + self.pop_weight * loss_con + \
+                loss_click - self.config['dis_penalty'] * loss_dis
     
     def _adapt(self, current_epoch):
         if not hasattr(self, 'last_epoch'):

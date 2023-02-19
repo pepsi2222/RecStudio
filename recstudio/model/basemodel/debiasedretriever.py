@@ -1,5 +1,5 @@
 from . import BaseRetriever
-from .. import loss_func
+from .. import loss_func, scorer
 from loss_func import FullScoreLoss
 from typing import Dict, List, Optional, Tuple, Union
 import torch
@@ -40,7 +40,11 @@ class DebiasedRetriever(BaseRetriever):
     def _get_sampler(self, train_data):
         return None
 
-    def _get_propensity(self, train_data)
+    # def _get_score_func(self):
+    #     # For only topk() function
+    #     return scorer.InnerProductScorer()
+
+    def _get_propensity(self, train_data):
         return None
 
     def _get_discrepancy(self):
@@ -49,15 +53,24 @@ class DebiasedRetriever(BaseRetriever):
         elif self.config['discrepancy'].lower() == 'l1':
             return loss_func.L1Loss()
         elif self.config['discrepancy'].lower() == 'l2':
+            # Whether l2 normalization matters?
             return loss_func.SquareLoss()
         elif self.config['discrepancy'].lower() == 'dcor':
             return loss_func.dCorLoss()
+        elif self.config['discrepancy'].lower() == 'cos':
+            return scorer.CosineScorer()
+        else:
+            raise ValueError(f"{self.config['discrepancy']} "
+                            "is unsupportable.")
 
     def _add_backbone(self, train_data):
         for name in self.config['backbone'].keys():
             if name in self.backbone.keys():
                 raise ValueError(f'Backbone name {name} appears more than one time.')
+            # TODO: support BaseRanker type models
+            # TODO:support self-defined one tower models
             model_class, model_conf = get_model(self.config['backbone'][name]['model'])
+            # TODO: another way to pass model config / parameters
             backbone = model_class(model_conf)
             backbone._init_model(train_data)
             self.backbone[name] = backbone
@@ -68,15 +81,13 @@ class DebiasedRetriever(BaseRetriever):
                 return_neg_item=False, return_neg_id=False):
         query, neg_item_idx, log_pos_prob, log_neg_prob = None, None, None, None
         if self.config['co_sampling']:
-            pos_items = self._get_item_feat(batch)
-            pos_item_vec = self.item_encoder(pos_items)
             if self.sampler is not None:
                 if self.neg_count is None:
                     raise ValueError("`negative_count` value is required when "
                                     "`sampler` is not none.")
-                    (log_pos_prob, neg_item_idx, log_neg_prob), query = self.sampling(batch=batch, num_neg=self.neg_count,
-                                                                                    excluding_hist=self.config.get('excluding_hist', False),
-                                                                                    method=self.config.get('sampling_method', 'none'), return_query=True)
+                (log_pos_prob, neg_item_idx, log_neg_prob), query = self.sampling(batch=batch, num_neg=self.neg_count,
+                                                                                excluding_hist=self.config.get('excluding_hist', False),
+                                                                                method=self.config.get('sampling_method', 'none'), return_query=True)
         output = {}
         for name, backbone in self.backbone.items():
             output[name] = self.backbone.forward(
@@ -103,12 +114,32 @@ class DebiasedRetriever(BaseRetriever):
         for name, backbone in self.backbone.items():
             score = output[name]['score']
             score['label'] = batch[self.frating]
-            loss[name] = backbone.loss_fn(
-                reduction=self.config['backbone'][name]['loss_reduction'],
-                **score)
+            if backbone.loss_fn is not None:
+                loss[name] = backbone.loss_fn(
+                    reduction=self.config['backbone'][name]['loss_reduction'],
+                    **score)
         loss_value = self._get_final_loss(propensity, loss, output)
         return loss_value
 
-    def _get_final_loss(propensity : Tensor, loss : dict, output : dict):
+    def _get_final_loss(self, propensity : Tensor, loss : dict, output : dict):
         pass
     
+    def _get_item_vector(self):
+        item_vector = {}
+        for name, backbone in self.backbone.items():
+            item_vector[name] = backbone._get_item_vector()
+        item_vector = self._concat_item_vector(item_vector)
+        return item_vector
+    
+    def _concat_item_vector(item_vector : dict):
+        return torch.hstack([v for _, v in item_vector.items()])
+
+    def _concat_query_vector(query_vector : dict):
+        return torch.hstack([v for _, v in query_vector.items()])
+    
+    def topk(self, batch, k, user_h=None, return_query=False):
+        query = {}
+        for name, backbone in self.backbone.items():
+            query[name] = backbone.query_encoder(backbone._get_query_feat(batch))
+        query = self._concat_query_vector(query)
+        return super().topk(batch, k, user_h, return_query, query)

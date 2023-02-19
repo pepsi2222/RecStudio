@@ -1,6 +1,8 @@
 import torch
-from recstudio.model.mf.bpr import BPR
+from recstudio.ann import sampler
 from recstudio.model import basemodel, scorer
+from recstudio.model.module import MLPModule
+from recstudio.model.basemodel import DebiasedRetriever
 
 r"""
 MACR
@@ -11,65 +13,84 @@ Paper Reference:
     https://doi.org/10.1145/3447548.3467289
 """
 
-class MACR(BPR):               
+class MACR(DebiasedRetriever):               
         
     def add_model_specific_args(parent_parser):
         parent_parser = basemodel.Recommender.add_model_specific_args(parent_parser)
         parent_parser.add_argument_group('MACR')
-        # parent_parser.add_argument("--backbone", type=str, default='BPR', help='backbone recommender Y_k')
-        # parent_parser.add_argument("--user_module", type=str, default='PMF', help='user module Y_u')
-        # parent_parser.add_argument("--item_module", type=str, default='PMF', help='item module Y_i')
         parent_parser.add_argument("--c", type=float, default=40.0, help='reference status')
         parent_parser.add_argument("--alpha", type=float, default=1e-3, help='weight of user loss')
         parent_parser.add_argument("--beta", type=float, default=1e-3, help='weight of item loss')
         return parent_parser        
     
+    def _init_model(self, train_data):
+        super()._init_model(train_data)
+        self.backbone['matching'].loss_fn = None
+
     def _get_score_func(self):
+        # For only topk() function
         class MACRScorer(scorer.InnerProductScorer):
-            def __init__(self, c, embed_dim):
+            def __init__(self, c, user_module, item_module):
                 super().__init__()
                 self.c = c
-                self.eval = False
-                self.user_module = torch.nn.Parameter(torch.randn(embed_dim, 1))
-                self.item_module = torch.nn.Parameter(torch.randn(embed_dim, 1))
+                self.user_module = user_module  # shared
+                self.item_module = item_module  # shared
             def forward(self, query, items):
                 yk = super().forward(query, items)
-                yu = torch.sigmoid(query @ self.user_module)
-                yi = torch.sigmoid(items @ self.item_module)
-                yk_ = yk if not self.eval else yk - self.c
-                if query.size(0) == items.size(0):
-                    if query.dim() < items.dim():
-                        yui = torch.sigmoid(yk_ * yu * yi.squeeze(-1))
-                    else:
-                        yui = torch.sigmoid(yk_ * yu.squeeze(-1) * yi.squeeze(-1))
-                else:
-                    yui = yk_ * (yu @ yi.transpose(0, 1))
-                    
-                if self.eval == False:
-                    return yu, yi, yui
-                else:
-                    return yui
-        return MACRScorer(self.config['c'], self.embed_dim)
+                yu = self.user_module(query)
+                yi = self.item_module(items)
+                yui = (yk - self.c) * torch.outer(yu, yi)
+                return yui
+        
+        # Flexible but Dangerous, 
+        # maybe can examine 
+        # whether the str is `torch.[a-zA-z.]+([a-zA-z.,]+)` like, and
+        # whether the outermost `(` and `)` match.
+        # self.user_module = eval(self.config['user_module'])
+        # self.item_module = eval(self.config['item_module'])
+        assert self.config['user_module']['mlp_layers'][-1] == 1
+        assert self.config['item_module']['mlp_layers'][-1] == 1
+        self.user_module = MLPModule(**self.config['user_module'])
+        self.item_module = MLPModule(**self.config['item_module'])
+        assert 'sigmoid' in str(self.user_module[-1]).lower(), \
+            'sigmoid' in str(self.item_module[-1]).lower()
+        return MACRScorer(self.config['c'], self.user_module, self.item_module)
+        
     
     def _get_loss_func(self):
-        class MACRLoss(torch.nn.BCELoss):
-            def __init__(self, alpha, beta):
-                super().__init__(reduction='mean')
-                self.alpha = alpha
-                self.beta = beta
+        class BCELoss(torch.nn.Module):
             def forward(self, label, pos_score, log_pos_prob, neg_score, log_neg_prob):
-                pos_yu, pos_yi, pos_yui = pos_score
-                neg_yu, neg_yi, neg_yui = neg_score
-                loss_o = super().forward(pos_yui, torch.ones_like(pos_yui)) + super().forward(neg_yui, -torch.ones_like(neg_yui))
-                loss_u = super().forward(pos_yu, torch.ones_like(pos_yu)) + super().forward(neg_yu, -torch.ones_like(neg_yu))
-                loss_i = super().forward(pos_yi, torch.ones_like(pos_yi)) + super().forward(neg_yi, -torch.ones_like(neg_yi))
-                return loss_o + self.alpha * loss_u + self.beta * loss_i
-        return MACRLoss(self.config['alpha'], self.config['beta'])
+                return -torch.mean(torch.log(pos_score) + torch.log(1 - neg_score)) 
+        return BCELoss()
     
-    def training_step(self, batch):
-        self.score_func.eval = False
-        return super().training_step(batch)
-    
-    def _test_step(self, batch, metric, cutoffs):
-        self.score_func.eval = True
-        return super()._test_step(batch, metric, cutoffs)
+    def _get_final_loss(self, propensity, loss: dict, output: dict):
+        pos_yui = output['matching']['score']['pos_score'] * \
+                          output['user_module']['score']['pos_score'] * \
+                          output['item_module']['score']['pos_score']
+        neg_yui = output['matching']['score']['neg_score'] * \
+                        torch.outer(
+                            output['user_module']['score']['neg_score'], 
+                            output['item_module']['score']['neg_score'])
+        loss_click = self.loss_fn(
+                        pos_score=pos_yui,
+                        neg_score=neg_yui,
+                        label=None,
+                        log_pos_prob=None,
+                        log_neg_prob=None)
+        score_u = self.user_module(output['matching']['query'])
+        loss_u = self.loss_fn(
+                    pos_score=score_u,
+                    neg_score=score_u,
+                    label=None,
+                    log_pos_prob=None,
+                    log_neg_prob=None)
+        loss_i = self.loss_fn(
+                    pos_score=self.item_module(output['matching']['item']),
+                    neg_score=self.item_module(output['matching']['neg_item']),
+                    label=None,
+                    log_pos_prob=None,
+                    log_neg_prob=None)
+        return loss_click + self.config['alpha'] * loss_u + self.config['beta'] * loss_i
+
+    def _get_sampler(self, train_data):
+        return sampler.MaskedUniformSampler(train_data.num_items)

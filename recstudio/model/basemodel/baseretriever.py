@@ -141,7 +141,6 @@ class BaseRetriever(Recommender):
                 query=None, neg_item_idx=None, log_pos_prob=None, log_neg_prob=None,
                 return_query=False, return_item=False, 
                 return_neg_item=False, return_neg_id=False):
-        query_vec, pos_item_vec, neg_item_vec,
         output = {}
         pos_items = self._get_item_feat(batch)
         pos_item_vec = self.item_encoder(pos_items)
@@ -361,9 +360,10 @@ class BaseRetriever(Recommender):
     def build_index(self):
         raise NotImplementedError("build_index  for ranker not implemented.")
 
-    def topk(self, batch, k, user_h=None, return_query=False):
+    def topk(self, batch, k, user_h=None, return_query=False, query=None):
         # TODO: complete topk with retriever
-        query = self.query_encoder(self._get_query_feat(batch))
+        if query is None:
+            query = self.query_encoder(self._get_query_feat(batch))
         more = user_h.size(1) if user_h is not None else 0
         if self.use_index:
             if isinstance(self.score_func, CosineScorer):
