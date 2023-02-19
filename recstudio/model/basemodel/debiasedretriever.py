@@ -54,40 +54,42 @@ class DebiasedRetriever(BaseRetriever):
             return loss_func.dCorLoss()
 
     def _add_backbone(self, train_data):
-        for name in self.config['backbone']:
+        for name in self.config['backbone'].keys():
             if name in self.backbone.keys():
                 raise ValueError(f'Backbone name {name} appears more than one time.')
-            model_class, model_conf = get_model(self.config['backbone'][name])
+            model_class, model_conf = get_model(self.config['backbone'][name]['model'])
             backbone = model_class(model_conf)
             backbone._init_model(train_data)
-            if self.config['co_sampling']:
-                # 如果多个backbone共同采样，一个step只采一次：
-                # 不用backbone的samling方法，用debias框架自定义的_sample方法
-                # 能不能把baseretriever的forward里面的sampling放到外面，
-                # 然后把query等参数传给forward
-                # 采样的时候 debias框架先采样，再分别传给不同的backbone
-                backbone.forward = MethodType(..., backbone)
             self.backbone[name] = backbone
 
-    def _sample(
-        self,
-        batch,
-        neg: int = 1,
-        excluding_hist: bool = False,
-        return_query: bool = True
-    ):
 
-
-    def forward(self, batch, return_query=False, return_item=False, return_neg_item=False, return_neg_id=False):
+    def forward(self, batch, 
+                return_query=False, return_item=False, 
+                return_neg_item=False, return_neg_id=False):
+        query, neg_item_idx, log_pos_prob, log_neg_prob = None, None, None, None
+        if self.config['co_sampling']:
+            pos_items = self._get_item_feat(batch)
+            pos_item_vec = self.item_encoder(pos_items)
+            if self.sampler is not None:
+                if self.neg_count is None:
+                    raise ValueError("`negative_count` value is required when "
+                                    "`sampler` is not none.")
+                    (log_pos_prob, neg_item_idx, log_neg_prob), query = self.sampling(batch=batch, num_neg=self.neg_count,
+                                                                                    excluding_hist=self.config.get('excluding_hist', False),
+                                                                                    method=self.config.get('sampling_method', 'none'), return_query=True)
         output = {}
         for name, backbone in self.backbone.items():
             output[name] = self.backbone.forward(
                 batch, 
-                isinstance(backbone.loss_fn, FullScoreLoss), 
-                return_query, 
-                retuen_item,
-                return_neg_item,
-                return_neg_id)
+                isinstance(backbone.loss_fn, FullScoreLoss),
+                query=query, 
+                neg_item_idx=neg_item_idx,
+                log_pos_prob=log_pos_prob,
+                log_neg_prob=log_neg_prob,
+                return_query=True, 
+                retuen_item=True,
+                return_neg_item=True,
+                return_neg_id=True)
         return output
 
     def training_step(self, batch):
@@ -102,7 +104,7 @@ class DebiasedRetriever(BaseRetriever):
             score = output[name]['score']
             score['label'] = batch[self.frating]
             loss[name] = backbone.loss_fn(
-                reduction=self.config['name']['loss_reduction'],
+                reduction=self.config['backbone'][name]['loss_reduction'],
                 **score)
         loss_value = self._get_final_loss(propensity, loss, output)
         return loss_value

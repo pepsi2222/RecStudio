@@ -137,8 +137,11 @@ class BaseRetriever(Recommender):
         if self.use_index:
             self.ann_index = self.build_ann_index()
 
-    def forward(self, batch, full_score, return_query=False, return_item=False, return_neg_item=False, return_neg_id=False):
-        # query_vec, pos_item_vec, neg_item_vec,
+    def forward(self, batch, full_score, 
+                query=None, neg_item_idx=None, log_pos_prob=None, log_neg_prob=None,
+                return_query=False, return_item=False, 
+                return_neg_item=False, return_neg_id=False):
+        query_vec, pos_item_vec, neg_item_vec,
         output = {}
         pos_items = self._get_item_feat(batch)
         pos_item_vec = self.item_encoder(pos_items)
@@ -146,10 +149,10 @@ class BaseRetriever(Recommender):
             if self.neg_count is None:
                 raise ValueError("`negative_count` value is required when "
                                  "`sampler` is not none.")
-
-            (log_pos_prob, neg_item_idx, log_neg_prob), query = self.sampling(batch=batch, num_neg=self.neg_count,
-                                                                              excluding_hist=self.config.get('excluding_hist', False),
-                                                                              method=self.config.get('sampling_method', 'none'), return_query=True)
+            if neg_item_idx is None:
+                (log_pos_prob, neg_item_idx, log_neg_prob), query = self.sampling(batch=batch, num_neg=self.neg_count,
+                                                                                excluding_hist=self.config.get('excluding_hist', False),
+                                                                                method=self.config.get('sampling_method', 'none'), return_query=True)
             pos_score = self.score_func(query, pos_item_vec)
             if batch[self.fiid].dim() > 1:
                 pos_score[batch[self.fiid] == 0] = -float('inf')  # padding
