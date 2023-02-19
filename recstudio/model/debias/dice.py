@@ -57,16 +57,17 @@ class DICE(DebiasedRetriever):
             pos_score=pos_click_score, neg_score=neg_click_score, 
             label=None, log_pos_prob=None, log_neg_prob=None)
 
-        loss_int = torch.mean(output['mask'] * loss['interest'])
-        loss_con = torch.mean(~output['mask'] * loss['conformity']) + \
-                torch.mean(output['mask'] * self.backbone['conformity'].loss_fn(
+        mask, _ = output['interest']['score']['log_neg_prob']
+        loss_int = torch.mean(mask * loss['interest'])
+        loss_con = torch.mean(~mask * loss['conformity']) + \
+                torch.mean(mask * self.backbone['conformity'].loss_fn(
                     pos_score=output['conformity']['score']['neg_score'], 
                     neg_score=output['conformity']['score']['pos_score'],
                     label=None, log_pos_prob=None, log_neg_prob=None
                 ))
 
         return self.int_weight * loss_int + self.pop_weight * loss_pop + \
-                        loss_click - self.dis_pen * loss_dis
+                loss_click - self.dis_pen * loss_dis
     
     def _adapt(self, current_epoch):
         if not hasattr(self, 'last_epoch'):

@@ -16,6 +16,12 @@ loss_decay: 0.9
 return_hist: True
 batch_size: 256
 
+co_sampling: True
+
 backbone: 
-  interest: BPR
-  conformity: BPR
+  interest: 
+    model: BPR
+    loss_reduction: ~
+  conformity: 
+    model: BPR
+    loss_reduction: ~
