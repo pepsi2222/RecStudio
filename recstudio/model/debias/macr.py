@@ -13,7 +13,7 @@ Paper Reference:
     https://doi.org/10.1145/3447548.3467289
 """
 
-class MACR(DebiasedRetriever):               
+class MACR(DebiasedRetriever):  
         
     def add_model_specific_args(parent_parser):
         parent_parser = basemodel.Recommender.add_model_specific_args(parent_parser)
@@ -63,21 +63,31 @@ class MACR(DebiasedRetriever):
                 return -torch.mean(torch.log(pos_score) + torch.log(1 - neg_score)) 
         return BCELoss()
     
+    def _fusion(self, matching_score, user_score, item_score):
+        if user_score.shape == item_score.shape:
+            click_score = matching_score * torch.outer(user_score, item_score)
+        else:
+            click_score = matching_score * user_score * item_score
+        return click_score
+
     def _get_final_loss(self, propensity, loss: dict, output: dict):
-        pos_yui = output['matching']['score']['pos_score'] * \
-                          output['user_module']['score']['pos_score'] * \
-                          output['item_module']['score']['pos_score']
-        neg_yui = output['matching']['score']['neg_score'] * \
-                        torch.outer(
-                            output['user_module']['score']['neg_score'], 
-                            output['item_module']['score']['neg_score'])
+        score_u = self.user_module(output['matching']['query'])
+        pos_score_i = self.item_module(output['matching']['item'])
+        neg_score_i = self.item_module(output['matching']['neg_item'])
+        pos_score_click = self._fusion(
+                            output['matching']['score']['pos_score'],
+                            score_u,
+                            pos_score_i)
+        neg_score_click = self._fusion(
+                            output['matching']['score']['neg_score'],
+                            score_u,
+                            neg_score_i)
         loss_click = self.loss_fn(
-                        pos_score=pos_yui,
-                        neg_score=neg_yui,
+                        pos_score=pos_score_click,
+                        neg_score=neg_score_click,
                         label=None,
                         log_pos_prob=None,
                         log_neg_prob=None)
-        score_u = self.user_module(output['matching']['query'])
         loss_u = self.loss_fn(
                     pos_score=score_u,
                     neg_score=score_u,
@@ -85,8 +95,8 @@ class MACR(DebiasedRetriever):
                     log_pos_prob=None,
                     log_neg_prob=None)
         loss_i = self.loss_fn(
-                    pos_score=self.item_module(output['matching']['item']),
-                    neg_score=self.item_module(output['matching']['neg_item']),
+                    pos_score=pos_score_i,
+                    neg_score=neg_score_i,
                     label=None,
                     log_pos_prob=None,
                     log_neg_prob=None)

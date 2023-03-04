@@ -1,7 +1,6 @@
-method: prod-c # avg/prod-t/prod-c
 discrepancy: l1  # l1/l2
 dis_penalty: 1.0
-data_mode: skew # reg/skew
+data_mode: reg # reg/skew
 
 co_sampling: False
 
@@ -10,7 +9,9 @@ backbone:
   control:
     model: PMF
     loss_reduction: mean
+    batch_size: 256
 
   treatment:
     model: PMF
-    loss_reduction: ~
+    loss_reduction: mean
+    batch_size: 256

@@ -68,13 +68,14 @@ class DebiasedRetriever(BaseRetriever):
             if name in self.backbone.keys():
                 raise ValueError(f'Backbone name {name} appears more than one time.')
             # TODO: support BaseRanker type models
-            # TODO:support self-defined one tower models
             model_class, model_conf = get_model(self.config['backbone'][name]['model'])
             # TODO: another way to pass model config / parameters
             backbone = model_class(model_conf)
             backbone._init_model(train_data)
             self.backbone[name] = backbone
 
+    def _get_masked_batch(self, backbone_name, batch):
+        return batch
 
     def forward(self, batch, 
                 return_query=False, return_item=False, 
@@ -90,6 +91,7 @@ class DebiasedRetriever(BaseRetriever):
                                                                                 method=self.config.get('sampling_method', 'none'), return_query=True)
         output = {}
         for name, backbone in self.backbone.items():
+            batch = self._get_masked_batch(name, batch)
             output[name] = self.backbone.forward(
                 batch, 
                 isinstance(backbone.loss_fn, FullScoreLoss),

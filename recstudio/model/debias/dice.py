@@ -48,7 +48,7 @@ class DICE(DebiasedRetriever):
         item_con = torch.vstack((pos_item_con, 
                     neg_item_con.view(-1, pos_item_con.shape[1])))
         loss_dis = self.discrepancy(query_int, query_con) + \
-                            self.discrepancy(item_int, item_con)
+                    self.discrepancy(item_int, item_con)
 
         query = torch.vstack((query_int, query_con))
         pos_item = torch.vstack((pos_item_int, pos_item_con))

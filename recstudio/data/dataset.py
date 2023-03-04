@@ -1580,6 +1580,10 @@ class CombinedLoaders(object):
         return batch
 
 class ConcatedLoaders(object):
+    """
+    Mutiple dataloaders. Each dataloader's batch is concated and returned.
+    A smaller `Loader` indicates a larger dataset.
+    """
     def __init__(self, loaders) -> None:
         self.loaders = sorted(loaders, key=lambda x: x.dataset.num_inters, reverse=True)
 
