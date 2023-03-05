@@ -1,6 +1,6 @@
 import torch
 from recstudio.model.basemodel import DebiasedRetriever
-from recstudio.model import basemodel, loss_func, scorer
+from recstudio.model import basemodel, scorer
 import copy
 
 r"""
@@ -42,7 +42,7 @@ class CausE(DebiasedRetriever):
     def _get_score_func(self):
         return scorer.InnerProductScorer()
 
-    def _get_final_loss(self, propensity, loss : dict, output : dict):
+    def _get_final_loss(self, propensity, loss : dict, output : dict, batch : dict):
         item_c = output['control']['item']
         item_t = output['treatment']['control']
         loss_dis = self.discrepancy(item_c, item_t)

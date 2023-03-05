@@ -5,7 +5,6 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch
 from torch import Tensor
 from recstudio.utils import get_model
-from types import MethodType
 
 class DebiasedRetriever(BaseRetriever):
     def __init__(self, config: Dict = None, **kwargs):
@@ -120,10 +119,10 @@ class DebiasedRetriever(BaseRetriever):
                 loss[name] = backbone.loss_fn(
                     reduction=self.config['backbone'][name]['loss_reduction'],
                     **score)
-        loss_value = self._get_final_loss(propensity, loss, output)
+        loss_value = self._get_final_loss(propensity, loss, output, batch)
         return loss_value
 
-    def _get_final_loss(self, propensity : Tensor, loss : dict, output : dict):
+    def _get_final_loss(self, propensity : Tensor, loss : dict, output : dict, batch : dict):
         pass
     
     def _get_item_vector(self):

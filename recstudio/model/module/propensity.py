@@ -57,16 +57,13 @@ class Popularity(torch.nn.Module):
     get propensity by popularity.
     """
     def fit(self, train_data : Dataset):
-        self.fuid = train_data.fuid
-        self.fiid = train_data.fiid
-        pop  = (train_data.item_freq + 1) / (torch.sum(train_data.item_freq) + train_data.num_items)
+        pop = (train_data.item_freq + 1) / (torch.sum(train_data.item_freq) + train_data.num_items)
         pop = (pop - pop.min()) / (pop.max() - pop.min())
+        pop = pop.unsqueeze(-1)
         self.register_buffer('pop', pop)
     def forward(self, batch):
-        if batch[self.fuid].dim() >= batch[self.fiid].dim():
-            return self.pop[batch[self.fiid]].unsqueeze(-1).expand_as(batch[self.fuid])
-        else:
-            return self.pop[batch[self.fiid]]
+        """batch (torch.tensor): item id"""
+        self.pop[batch]
         
 class PoissonFactorization(torch.nn.Module):
     """

@@ -1,8 +1,8 @@
-import torch
+from torch import Tensor
 import torch.nn.functional as F
-from recstudio.model.mf.bpr import BPR
-from recstudio.model import basemodel, scorer
-from recstudio.model import DebiasedModel
+from recstudio.model import basemodel, scorer, loss_func
+from recstudio.model.basemodel import DebiasedRetriever
+from recstudio.model.module.propensity import Popularity
 
 r"""
 PDA
@@ -13,53 +13,45 @@ Paper Reference:
     https://doi.org/10.1145/3404835.3462875
 """
 
-class PDA(DebiasedModel, BPR):               
+class PDA(DebiasedRetriever):               
         
     def add_model_specific_args(parent_parser):
         parent_parser = basemodel.Recommender.add_model_specific_args(parent_parser)
         parent_parser.add_argument_group('PDA')
-        parent_parser.add_argument("--algo", type=str, default='PDG', help='algo of PDA')
+        parent_parser.add_argument("--algo", type=str, default='PD', help='algo of PDA')
+        parent_parser.add_argument("--popularity", type=str, default='global', help='global or local')
         parent_parser.add_argument("--gamma", type=float, default=0.02, help='gamma for PDA')
         return parent_parser        
 
-    def _get_item_encoder(self, train_data):
-        if self.config['algo'].upper()  == 'PDG' or 'PDGA':
-            pop = (train_data.item_freq + 1) / (torch.sum(train_data.item_freq) + train_data.num_items)
-            pop = (pop - pop.min()) / (pop.max() - pop.min())
-            pop = pop.unsqueeze(-1)
-        elif self.config['algo'].upper()  == 'PD' or 'PDA':
-            NotImplementedError(f"{self.config['algo'] } is not implemented.")
+    def _init_model(self, train_data):
+        super()._init_model(train_data)
+        self.backbone['PDA'].loss_fn = None
 
-        class PDAItemEncoder(torch.nn.Embedding):
-            def __init__(self, pop, num_embeddings, embedding_dim, padding_idx=None):
-                super().__init__(num_embeddings, embedding_dim, padding_idx)
-                self.register_buffer('pop', pop)
-            def forward(self, batch):
-                items = super().forward(batch)
-                pop = self.pop[batch]
-                return torch.cat((items, pop), dim = -1)
-
-        return PDAItemEncoder(pop, train_data.num_items, self.embed_dim, padding_idx=0)
-
-    def _get_item_vector(self):
-        return torch.hstack((self.item_encoder.weight[1:], self.item_encoder.pop[1:]))
+    def _get_propensity(self, train_data):
+        if self.config['popularity'].lower() == 'global':
+            self.propensity = Popularity()
+            self.propensity.fit(train_data)
+        elif self.config['popularity'].lower() == 'local':
+            raise ValueError(f"Local popularity is not implemented.")
 
     def _get_score_func(self):  
-        class PDAScorer(scorer.InnerProductScorer):
-            def __init__(self, algo, gamma):
+        class PDAEvalScorer(scorer.InnerProductScorer):
+            def __init__(self, algo, gamma, pop):
                 super().__init__()
-                self.algo = algo.upper()
+                self.algo = algo
                 self.gamma = gamma
+                self.pop = pop
             def forward(self, query, items):
-                items, pop = items.split([items.shape[-1]-1, 1], dim=-1)
                 f = super().forward(query, items)
                 elu_ = F.elu(f) + 1
-                if self.algo == 'PD' or 'PDG':
+                if self.algo == 'PD':
                     return elu_
-                elif self.algo == 'PDA' or 'PDGA':
-                    return pop ** self.gamma * elu_
+                elif self.algo == 'PDA':
+                    return self.pop ** self.gamma * elu_
 
-        return PDAScorer(self.config['algo'], self.config['gamma']) 
+        return PDAEvalScorer(self.config['algo'], 
+                             self.config['gamma'],
+                             self.propensity.pop) 
 
     def training_step(self, batch):
         output = self.forward(batch, False, return_item=True, return_neg_item=True)
@@ -72,3 +64,16 @@ class PDA(DebiasedModel, BPR):
         score['label'] = batch[self.frating]
         loss_value = self.loss_fn(**score)
         return loss_value
+
+    def _get_loss_func(self):
+        return loss_func.BPRLoss()
+    
+    def _get_final_loss(self, propensity: Tensor, loss: dict, output: dict, batch : dict):
+        pos_weight = self.propensity(batch[self.fiid]) ** self.config['gamma']
+        neg_weight = self.propensity(output['PDA']['neg_id']) ** self.config['gamma']
+        score = output['PDA']['score']
+        score['pos_score'] = pos_weight * score['pos_score']
+        score['neg_score'] = neg_weight * score['neg_score']
+        score['label'] = batch[self.frating]
+        loss = self.loss_fn(**score)
+        return loss
