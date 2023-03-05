@@ -56,10 +56,14 @@ class Popularity(torch.nn.Module):
     """
     get propensity by popularity.
     """
+    def __init__(self, eta=1.0):
+        super().__init__()
+        self.eta = eta
     def fit(self, train_data : Dataset):
         pop = (train_data.item_freq + 1) / (torch.sum(train_data.item_freq) + train_data.num_items)
         pop = (pop - pop.min()) / (pop.max() - pop.min())
         pop = pop.unsqueeze(-1)
+        pop = pop ** self.eta
         self.register_buffer('pop', pop)
     def forward(self, batch):
         """batch (torch.tensor): item id"""

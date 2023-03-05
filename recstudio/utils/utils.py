@@ -112,7 +112,7 @@ def get_model(model_name: str):
     Returns:
         Recommender: model class
     """
-    model_submodule = ['ae', 'mf', 'seq', 'fm', 'graph', 'kg']
+    model_submodule = ['ae', 'mf', 'seq', 'fm', 'graph', 'kg', 'debias']
 
     model_file_name = model_name.lower()
     model_module = None
