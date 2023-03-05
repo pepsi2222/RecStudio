@@ -1,0 +1,7 @@
+lambda_theta: 1e-5
+lambda_beta: 1e-5
+init_range: 0.01
+propensity_estimation: popularity # popularity / poisson_factorization
+prediction: conditional # conditional / marginal
+
+batch_size: 128

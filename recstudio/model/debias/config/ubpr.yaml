@@ -1,0 +1,8 @@
+eta: 0.5
+negative_count: 10
+in_batch_sampling_count: ~
+
+backbone:
+  UBPR:
+    model: BPR
+    loss_reduction: ~
