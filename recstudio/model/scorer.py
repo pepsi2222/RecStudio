@@ -7,12 +7,12 @@ class InnerProductScorer(torch.nn.Module):
         # query, item : ([B, D], [B, D]), ([B, D], [B, neg, D]), ([B, D], [N, D]),
         # ([B, L, D], [B, L, D]), ([B, L, D], [B, L, neg, D])
         if query.size(0) == items.size(0):
-            if query.dim() < items.dim():
+            if query.dim() < items.dim(): #([B,D], [B,N,D])
                 output = torch.matmul(items, query.view(*query.shape, 1))
                 output = output.view(output.shape[:-1])
-            else:
+            else:   #([B,D], [B,D]), ([B,L,D], [B,L,D])
                 output = torch.sum(query * items, dim=-1)
-        else:
+        else:   # ([B,D], [N,D])
             output = torch.matmul(query, items.T)
         return output
 
@@ -109,5 +109,5 @@ class FusionMFMLPScorer(InnerProductScorer):
                 key = key.unsqueeze(0).repeat(query.size(0), 1, 1)
         h_mf = query * key
         h_mlp = (self.mlp(torch.cat([query, key], dim=-1)))
-        h = self.W(torch.cat([h_mf, h_mlp], dim=-1)).squeeze(-1)
+        h = self.activation(self.W(torch.cat([h_mf, h_mlp], dim=-1)).squeeze(-1))
         return h

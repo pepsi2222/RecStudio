@@ -133,14 +133,22 @@ class BinaryCrossEntropyLoss(PairwiseLoss):
                 neg_score.shape[:-1])) or (pos_score.dim() == neg_score.dim())
         if not self.dns:
             weight = self._cal_weight(neg_score, log_neg_prob)
-            notpadnum = torch.logical_not(torch.isinf(pos_score)).float().sum()
-            output = torch.nan_to_num(F.logsigmoid(pos_score), nan=0.0).sum() / notpadnum
-            neg_score = F.softplus(neg_score) * weight
-            neg_score_sum = neg_score.sum(-1)
+            padding_mask = torch.isinf(pos_score)
+            # positive
+            pos_loss = F.logsigmoid(pos_score)
+            pos_loss.masked_fill_(padding_mask, 0.0)
+            pos_loss = pos_loss.sum() / (~padding_mask).sum()
+            # negative
+            neg_loss = F.softplus(neg_score) * weight
+            neg_loss = neg_loss.sum(-1)
+            # mask
             if pos_score.dim() == neg_score.dim()-1:
-                padding_mask = torch.isinf(pos_score)
-                neg_score_sum.masked_fill_(padding_mask, 0.0)
-            return -output + torch.mean(neg_score_sum)
+                neg_loss.masked_fill_(padding_mask, 0.0)
+                neg_loss = neg_loss.sum() / (~padding_mask).sum()
+            else:
+                neg_loss = torch.mean(neg_loss)
+
+            return -pos_loss + neg_loss
         else:
             return torch.mean(-F.logsigmoid(pos_score) + F.softplus(torch.max(neg_score, dim=-1)))
 
@@ -206,24 +214,30 @@ def l2_reg_loss_fn(*args):
     loss = 0.
     for emb in args:
         loss = loss + torch.mean(torch.sum(emb * emb, dim=-1)) # [B, D] -> [B] -> []
-    return loss 
+    return loss
 
-class MaskBPRLoss(BPRLoss):   
-    def forward(self, mask, label, pos_score, log_pos_prob, neg_score, log_neg_prob):
-        if not self.dns:
-            if pos_score.dim() < neg_score.dim():
-                loss = F.logsigmoid(pos_score.view(*pos_score.shape, 1) - neg_score)
-                weight = F.softmax(torch.ones_like(neg_score), -1)
-                return -torch.mean((mask * loss * weight).sum(-1))
-            else:
-                loss = F.logsigmoid(pos_score - neg_score.view(*neg_score.shape, 1))
-                weight = F.softmax(torch.ones_like(pos_score), -1)
-                return -torch.mean((mask * loss * weight).sum(-1))
-        else:
-            if pos_score.dim() < neg_score.dim():
-                loss = -torch.mean(mask *
-                    F.logsigmoid(pos_score - torch.max(neg_score, dim=-1)))
-            else:
-                loss = -torch.mean(mask *
-                    F.logsigmoid(torch.max(pos_score, dim=-1) - neg_score))
-            return loss
+
+class BCEWithLogitLoss(PointwiseLoss):
+    def __init__(self, threshold: float=3.0, reduction: str='mean') -> None:
+        super().__init__()
+        self.threshold = threshold
+        self.reduction = reduction
+
+    def forward(self, label, pos_score):
+        label = (label > self.threshold).float()
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(
+            pos_score, label, reduction=self.reduction)
+        return loss
+
+
+class MSELoss(PointwiseLoss):
+    def __init__(self, threshold: float=None, reduction: str='mean') -> None:
+        super().__init__()
+        self.threshold = threshold
+        self.reduction = reduction
+
+    def forward(self, label, pos_score):
+        if self.threshold is not None:
+            label = (label > self.threshold).float()
+        loss = torch.nn.functional.mse_loss(pos_score, label)
+        return loss
