@@ -36,7 +36,7 @@ class DICE(DebiasedRetriever):
     def _get_loss_func(self):
         return loss_func.BPRLoss()    
 
-    def _get_final_loss(self, propensity, loss : dict, output : dict, batch : dict):
+    def _get_final_loss(self, loss : dict, output : dict, batch : dict):
         query_int = output['interest']['query']
         query_con = output['conformity']['query']
         pos_item_int = output['interest']['item']

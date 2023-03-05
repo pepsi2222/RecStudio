@@ -70,7 +70,7 @@ class MACR(DebiasedRetriever):
             click_score = matching_score * user_score * item_score
         return click_score
 
-    def _get_final_loss(self, propensity, loss: dict, output: dict, batch : dict):
+    def _get_final_loss(self, loss: dict, output: dict, batch : dict):
         score_u = self.user_module(output['matching']['query'])
         pos_score_i = self.item_module(output['matching']['item'])
         neg_score_i = self.item_module(output['matching']['neg_item'])

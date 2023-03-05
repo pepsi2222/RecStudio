@@ -105,11 +105,6 @@ class DebiasedRetriever(BaseRetriever):
         return output
 
     def training_step(self, batch):
-        if self.propensity is not None:
-            propensity = self.propensity(batch)
-        else:
-            propensity = None
-
         output = self.forward(batch)
         loss = {}
         for name, backbone in self.backbone.items():
@@ -119,10 +114,10 @@ class DebiasedRetriever(BaseRetriever):
                 loss[name] = backbone.loss_fn(
                     reduction=self.config['backbone'][name]['loss_reduction'],
                     **score)
-        loss_value = self._get_final_loss(propensity, loss, output, batch)
+        loss_value = self._get_final_loss(loss, output, batch)
         return loss_value
 
-    def _get_final_loss(self, propensity : Tensor, loss : dict, output : dict, batch : dict):
+    def _get_final_loss(self, loss : dict, output : dict, batch : dict):
         pass
     
     def _get_item_vector(self):

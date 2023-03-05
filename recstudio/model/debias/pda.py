@@ -1,4 +1,3 @@
-from torch import Tensor
 import torch.nn.functional as F
 from recstudio.model import basemodel, scorer, loss_func
 from recstudio.model.basemodel import DebiasedRetriever
@@ -68,7 +67,7 @@ class PDA(DebiasedRetriever):
     def _get_loss_func(self):
         return loss_func.BPRLoss()
     
-    def _get_final_loss(self, propensity: Tensor, loss: dict, output: dict, batch : dict):
+    def _get_final_loss(self, loss: dict, output: dict, batch : dict):
         pos_weight = self.propensity(batch[self.fiid]) ** self.config['gamma']
         neg_weight = self.propensity(output['PDA']['neg_id']) ** self.config['gamma']
         score = output['PDA']['score']
