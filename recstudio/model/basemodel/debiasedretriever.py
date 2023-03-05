@@ -1,10 +1,9 @@
 from . import BaseRetriever
 from .. import loss_func, scorer
 from loss_func import FullScoreLoss
-from typing import Dict, List, Optional, Tuple, Union
-import torch
-from torch import Tensor
 from recstudio.utils import get_model
+import torch
+from typing import Dict, List, Optional, Tuple, Union
 
 class DebiasedRetriever(BaseRetriever):
     def __init__(self, config: Dict = None, **kwargs):
@@ -26,22 +25,12 @@ class DebiasedRetriever(BaseRetriever):
             self.discrepancy = self._get_discrepancy()
 
     def _init_model(self, train_data):
+        self._add_backbone(train_data)
         super()._init_model(train_data)
         self.propensity = self._get_propensity(train_data) if not self.propensity else self.propensity
-        self._add_backbone(train_data)
-
-    def _get_query_encoder(self, train_data):
-        return None
-
-    def _get_item_encoder(self, train_data):
-        return None
-
+    
     def _get_sampler(self, train_data):
         return None
-
-    # def _get_score_func(self):
-    #     # For only topk() function
-    #     return scorer.InnerProductScorer()
 
     def _get_propensity(self, train_data):
         return None
@@ -117,25 +106,65 @@ class DebiasedRetriever(BaseRetriever):
         loss_value = self._get_final_loss(loss, output, batch)
         return loss_value
 
-    def _get_final_loss(self, loss : dict, output : dict, batch : dict):
+    def _get_final_loss(self, loss : Dict, output : Dict, batch : Dict):
         pass
+    
+    """Below is all for evaluation."""
+    def _get_query_encoder(self, train_data):
+        return DebiasedQueryEncoder(self.backbone)
+
+    def _get_item_encoder(self, train_data):
+        return DebiasedItemEncoder(self.backbone)
+    
+    def _get_query_feat(self, data):
+        query_feat = {}
+        for k, v in self.backbone.items():
+            query_feat[k] = v._get_query_feat(data)
+        return query_feat 
+      
+    def _get_item_feat(self, data):
+        item_feat = {}
+        for k, v in self.backbone.items():
+            item_feat[k] = v._get_item_feat(data)
+        return item_feat
     
     def _get_item_vector(self):
         item_vector = {}
         for name, backbone in self.backbone.items():
             item_vector[name] = backbone._get_item_vector()
-        item_vector = self._concat_item_vector(item_vector)
+        item_vector = torch.hstack([v for _, v in item_vector.items()])
         return item_vector
     
-    def _concat_item_vector(item_vector : dict):
-        return torch.hstack([v for _, v in item_vector.items()])
-
-    def _concat_query_vector(query_vector : dict):
-        return torch.hstack([v for _, v in query_vector.items()])
-    
-    def topk(self, batch, k, user_h=None, return_query=False):
+class DebiasedQueryEncoder(torch.nn.Module):
+    def __init__(self, backbone, 
+                 func=lambda d: torch.hstack([v for _, v in d.items()])):
+        """func(function): decide how to get the query vector"""
+        super().__init__()
+        self.func = func
+        self.query_encoders = {}
+        for k, v in backbone.items():
+            self.query_encoders[k] = v.query_encoder
+    def forward(self, input):
+        """input (dict): {backbone name: corresponding query feat}"""
         query = {}
-        for name, backbone in self.backbone.items():
-            query[name] = backbone.query_encoder(backbone._get_query_feat(batch))
-        query = self._concat_query_vector(query)
-        return super().topk(batch, k, user_h, return_query, query)
+        for k, v in self.query_encoders.items():
+            query[k] = v(input[k])
+        query = self.func(query)
+        return query
+    
+class DebiasedItemEncoder(torch.nn.Module):
+    def __init__(self, backbone,
+                 func=lambda d: torch.hstack([v for _, v in d.items()])):
+        """choice(str): one of backbone names or `all`"""
+        super().__init__()
+        self.func = func
+        self.item_encoders = {}
+        for k, v in backbone.items():
+            self.item_encoders[k] = v.item_encoder
+    def forward(self, input):
+        """input (dict): {backbone name: corresponding item feat}"""
+        item = {}
+        for k, v in self.item_encoders.items():
+            item[k] = v(input[k])
+        item = self.func(item)
+        return item

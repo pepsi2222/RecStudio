@@ -30,9 +30,6 @@ class DICE(DebiasedRetriever):
         parent_parser.add_argument("--loss_decay", type=float, default=0.9, help='decay of loss')
         return parent_parser  
     
-    def _get_score_func(self):
-        return scorer.InnerProductScorer()
-    
     def _get_loss_func(self):
         return loss_func.BPRLoss()    
 

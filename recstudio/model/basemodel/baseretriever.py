@@ -360,10 +360,9 @@ class BaseRetriever(Recommender):
     def build_index(self):
         raise NotImplementedError("build_index  for ranker not implemented.")
 
-    def topk(self, batch, k, user_h=None, return_query=False, query=None):
+    def topk(self, batch, k, user_h=None, return_query=False):
         # TODO: complete topk with retriever
-        if query is None:
-            query = self.query_encoder(self._get_query_feat(batch))
+        query = self.query_encoder(self._get_query_feat(batch))
         more = user_h.size(1) if user_h is not None else 0
         if self.use_index:
             if isinstance(self.score_func, CosineScorer):

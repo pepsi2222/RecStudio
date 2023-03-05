@@ -1,7 +1,8 @@
-import torch
-from recstudio.model.basemodel import DebiasedRetriever
-from recstudio.model import basemodel, scorer
 import copy
+import torch
+from recstudio.model import basemodel, scorer
+from recstudio.model.basemodel import DebiasedRetriever
+from recstudio.model.basemodel.debiasedretriever import DebiasedQueryEncoder, DebiasedItemEncoder
 
 r"""
 CausE
@@ -33,14 +34,11 @@ class CausE(DebiasedRetriever):
         self.backbone['treatment'].loss_fn = BCEWithLogitsLoss()
         self.backbone['treatment'].query_encoder = self.backbone['control'].query_encoder
 
-    def _concat_item_vector(item_vector : dict):
-        return item_vector['control']
+    def _get_query_encoder(self, train_data):
+        return DebiasedQueryEncoder(self.backbone, lambda d: d['control'])
 
-    def _concat_query_vector(query_vector : dict):
-        return query_vector['control']
-    
-    def _get_score_func(self):
-        return scorer.InnerProductScorer()
+    def _get_item_encoder(self, train_data):
+        return DebiasedItemEncoder(self.backbone, lambda d: d['control'])
 
     def _get_final_loss(self, loss : dict, output : dict, batch : dict):
         item_c = output['control']['item']
