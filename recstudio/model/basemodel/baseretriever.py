@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import inspect
 import recstudio.eval as eval
 import torch
+from torch import Tensor
 import torch.nn.functional as F
 from ..scorer import *
 from . import Recommender
@@ -142,6 +143,10 @@ class BaseRetriever(Recommender):
     def forward(
             self,
             batch: Dict,
+            query: Tensor = None, 
+            neg_item_idx: Tensor = None, 
+            log_pos_prob: Tensor = None,
+            log_neg_prob: Tensor = None,
             full_score: bool = False,
             return_query: bool = False,
             return_item: bool = False,
@@ -156,10 +161,10 @@ class BaseRetriever(Recommender):
             if self.neg_count is None:
                 raise ValueError("`negative_count` value is required when "
                                  "`sampler` is not none.")
-
-            (log_pos_prob, neg_item_idx, log_neg_prob), query = self.sampling(batch=batch, num_neg=self.neg_count,
-                                                                              excluding_hist=self.config['train'].get('excluding_hist', False),
-                                                                              method=self.config['train'].get('sampling_method', 'none'), return_query=True)
+            if neg_item_idx is None:
+                (log_pos_prob, neg_item_idx, log_neg_prob), query = self.sampling(batch=batch, num_neg=self.neg_count,
+                                                                                excluding_hist=self.config.get('excluding_hist', False),
+                                                                                method=self.config.get('sampling_method', 'none'), return_query=True)
             pos_score = self.score_func(query, pos_item_vec)
             if batch[self.fiid].dim() > 1:
                 pos_score[batch[self.fiid] == 0] = -float('inf')  # padding

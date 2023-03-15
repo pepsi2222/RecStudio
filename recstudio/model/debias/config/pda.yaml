@@ -1,0 +1,10 @@
+algo: PD              # PD/PDA
+popularity: global    # global/local
+gamma: 0.02
+negative_count: 1
+# split_mode: time
+# time_slot: 9
+backbone:
+  PDA:
+    model: BPR
+    loss_reduction: mean

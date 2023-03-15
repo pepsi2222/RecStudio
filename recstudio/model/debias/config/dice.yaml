@@ -1,0 +1,29 @@
+discrepancy: l1 # l2 / dcor
+
+int_weight: 0.1
+pop_weight: 0.1
+dis_penalty: 0.01
+
+margin_up: 40.0
+margin_down: 40.0
+pool: 40
+negative_count: 4
+
+adaptive: True
+margin_decay: 0.9
+loss_decay: 0.9
+
+return_hist: True
+batch_size: 256
+
+co_sampling: True
+
+backbone: 
+
+  interest: 
+    model: BPR
+    loss_reduction: ~
+
+  conformity: 
+    model: BPR
+    loss_reduction: ~

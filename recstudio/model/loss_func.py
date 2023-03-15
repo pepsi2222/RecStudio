@@ -27,6 +27,12 @@ class PointwiseLoss(torch.nn.Module):
         raise NotImplementedError(f'{type(self).__name__} is an abstrat class, \
             this method would not be implemented')
 
+class L1Loss(PointwiseLoss):
+    def forward(self, label, pos_score):
+        if label.dim() > 1:
+            return torch.mean(torch.mean(torch.absolute(label - pos_score), dim=-1))
+        else:
+            return torch.mean(torch.absolute(label - pos_score))
 
 class SquareLoss(PointwiseLoss):
     def forward(self, label, pos_score):
@@ -35,6 +41,24 @@ class SquareLoss(PointwiseLoss):
         else:
             return torch.mean(torch.square(label - pos_score))
 
+class dCorLoss(PointwiseLoss):
+    def forward(self, label, pos_score):
+        if label.dim() > 1:
+            pass
+        else:
+            a = torch.norm(label[:,None] - label, p = 2, dim = 2)
+            b = torch.norm(pos_score[:,None] - pos_score, p = 2, dim = 2)
+
+            A = a - a.mean(dim=0)[None,:] - a.mean(dim=1)[:,None] + a.mean()
+            B = b - b.mean(dim=0)[None,:] - b.mean(dim=1)[:,None] + b.mean() 
+
+            n = label.size(0)
+
+            dcov2_ab = (A * B).sum()/float(n * n)
+            dcov2_aa = (A * A).sum()/float(n * n)
+            dcov2_bb = (B * B).sum()/float(n * n)
+            dcor = -torch.sqrt(dcov2_ab)/torch.sqrt(torch.sqrt(dcov2_aa) * torch.sqrt(dcov2_bb))
+            return dcor
 
 class SoftmaxLoss(FullScoreLoss):
     def forward(self, label, pos_score, all_score):

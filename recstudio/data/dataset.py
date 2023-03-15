@@ -778,7 +778,8 @@ class TripletDataset(Dataset):
             dict: A dict contains different feature.
         """
         data = self._get_pos_data(index)
-        if self.eval_mode and 'user_hist' not in data:
+        if (self.eval_mode and 'user_hist' not in data) or \
+            (not self.eval_mode and 'user_hist' not in data and self.return_hist):
             user_count = self.user_count[data[self.fuid]].max()
             data['user_hist'] = self.user_hist[data[self.fuid]][:, 0:user_count]
         else:
@@ -1671,13 +1672,35 @@ class CombinedLoaders(object):
         return self
 
     def __next__(self):
-        batch = next(self.loaders[0])
+        batch = next(self.loaders[0])      
         for i, l in enumerate(self.loaders[1:]):
             try:
                 batch.update(next(l))
             except StopIteration:
                 self.loaders[i+1] = iter(self.loaders[i+1])
                 batch.update(next(self.loaders[i+1]))
+        return batch
+
+class ConcatedLoaders(object):
+    """
+    Mutiple dataloaders. Each dataloader's batch is concated and returned.
+    A smaller `Loader` indicates a larger dataset.
+    """
+    def __init__(self, loaders) -> None:
+        self.loaders = sorted(loaders, key=lambda x: x.dataset.num_inters, reverse=True)
+
+    def __iter__(self):
+        for i, l in enumerate(self.loaders):
+            self.loaders[i] = iter(l)
+        return self
+
+    def __next__(self):
+        batch = next(self.loaders[0])
+        batch['Loader'] = torch.zeros_like(list(batch.values())[0])
+        for i, l in enumerate(self.loaders[1:]):
+            for k, v in next(l).items():
+                batch[k] = torch.cat((batch[k], v))
+            batch['Loader'] = torch.cat((batch[k], (i+1)*torch.ones_like(v)))
         return batch
 
 
