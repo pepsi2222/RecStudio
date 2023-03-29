@@ -47,9 +47,10 @@ class BaseRanker(Recommender):
             self.logger.warning('No retriever is used, topk metrics is not supported.')
 
     def _set_data_field(self, data):
-        token_field = set([k for k, v in data.field2type.items() if v=='token'])
-        token_field.add(data.frating)
-        data.use_field = token_field
+        # token_field = set([k for k, v in data.field2type.items() if v=='token'])
+        # token_field.add(data.frating)
+        # data.use_field = token_field
+        data.use_field = data.field2type.keys()
 
     def _get_retriever(self, train_data):
         return None
@@ -156,7 +157,11 @@ class BaseRanker(Recommender):
             metrics = {}
             for n, f in pred_m:
                 if not n in global_m:
-                    metrics[n] = f(result['pos_score'], result['label'])
+                    if len(inspect.signature(f).parameters) > 2:
+                        metrics[n] = f(result['pos_score'], result['label'], 
+                                       self.config['eval']['binarized_prob_thres'])
+                    else:
+                        metrics[n] = f(result['pos_score'], result['label'])
             if len(global_m) > 0:
                 # gather scores and labels for global metrics like AUC.
                 metrics['score'] = result['pos_score'].detach()
@@ -199,8 +204,5 @@ class BaseRanker(Recommender):
         global_m = eval.get_global_metrics(out)
         if len(global_m) > 0:
             for m, f in global_m:
-                if 'thres' in inspect.signature(f).parameters:
-                    out[m] = f(scores, labels)
-                else:
-                    out[m] = f(scores, labels)
+                out[m] = f(scores, labels)
         return out

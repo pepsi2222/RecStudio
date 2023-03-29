@@ -85,9 +85,10 @@ class Recommender(torch.nn.Module, abc.ABC):
         self.frating = train_data.frating
         assert self.frating in self.fields, 'rating field is required.'
         if drop_unused_field:
-            train_data.drop_feat(self.fields)
+            train_data.drop_feat(keep_fields=self.fields)
         self.item_feat = train_data.item_feat
-        self.item_fields = set(train_data.item_feat.fields).intersection(self.fields)
+        if self.item_feat is not None:
+            self.item_fields = set(train_data.item_feat.fields).intersection(self.fields)
         self.neg_count = self.config['train']['negative_count']
         if self.loss_fn is None:
             if 'train_data' in inspect.signature(self._get_loss_func).parameters:
@@ -203,7 +204,7 @@ class Recommender(torch.nn.Module, abc.ABC):
             dict: dict of metrics. The key is the name of metrics.
         """
 
-        test_data.drop_feat(self.fields)
+        test_data.drop_feat(keep_fields=self.fields)
         test_loader = test_data.eval_loader(batch_size=self.config['eval']['batch_size'])
         output = {}
         self.load_checkpoint(os.path.join(self.config['eval']['save_path'], self.ckpt_path))
@@ -593,11 +594,11 @@ class Recommender(torch.nn.Module, abc.ABC):
                         opt['optimizer'].zero_grad()
                 # model loss
                 training_step_args = {'batch': batch}
-                if 'nepoch' in inspect.getargspec(self.training_step).args:
+                if 'nepoch' in inspect.getfullargspec(self.training_step).args:
                     training_step_args['nepoch'] = nepoch
-                if 'loader_idx' in inspect.getargspec(self.training_step).args:
+                if 'loader_idx' in inspect.getfullargspec(self.training_step).args:
                     training_step_args['loader_idx'] = loader_idx
-                if 'batch_idx' in inspect.getargspec(self.training_step).args:
+                if 'batch_idx' in inspect.getfullargspec(self.training_step).args:
                     training_step_args['batch_idx'] = batch_idx
 
                 loss = self.training_step(**training_step_args)

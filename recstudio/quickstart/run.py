@@ -53,4 +53,5 @@ def run(model: str, dataset: str, model_config: Dict=None, data_config: Dict=Non
     logger.info(f"{datasets[0]}")
     logger.info(f"\n{set_color('Model Config', 'green')}: \n\n" + color_dict_normal(model_conf, False))
     model.fit(*datasets[:2], run_mode='light')
-    model.evaluate(datasets[-1])
+    if len(datasets[-1].data_index) > 0:
+        model.evaluate(datasets[-1])
