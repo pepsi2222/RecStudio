@@ -55,6 +55,7 @@ network_feat_header: [0, 0]
 # Normalizer()
 # KernelCenterer()
 # QuantileTransformer(), PolynomialFeatures(), SplineTransformer()
+# Customized: LogTransformer(), or use FunctionTransformer(...)
 float_field_preprocess: ~ # [float_field:MinMaxScaler(), ...]
 
 save_cache: False # whether to save processed dataset to cache.
