@@ -157,7 +157,11 @@ class BaseRanker(Recommender):
             metrics = {}
             for n, f in pred_m:
                 if not n in global_m:
-                    metrics[n] = f(result['pos_score'], result['label'])
+                    if len(inspect.signature(f).parameters) > 2:
+                        metrics[n] = f(result['pos_score'], result['label'], 
+                                       self.config['eval']['binarized_prob_thres'])
+                    else:
+                        metrics[n] = f(result['pos_score'], result['label'])
             if len(global_m) > 0:
                 # gather scores and labels for global metrics like AUC.
                 metrics['score'] = result['pos_score'].detach()
@@ -200,8 +204,5 @@ class BaseRanker(Recommender):
         global_m = eval.get_global_metrics(out)
         if len(global_m) > 0:
             for m, f in global_m:
-                if 'thres' in inspect.signature(f).parameters:
-                    out[m] = f(scores, labels)
-                else:
-                    out[m] = f(scores, labels)
+                out[m] = f(scores, labels)
         return out
