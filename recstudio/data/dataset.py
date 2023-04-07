@@ -353,38 +353,7 @@ class TripletDataset(Dataset):
         r"""Preprocess float fields."""
         
         def preprocess(col, preprocessor_str):
-            preprocessor_dict = {
-                'MinMaxScaler': MinMaxScaler,
-                'StandardScaler': StandardScaler,
-                'MaxAbsScaler': MaxAbsScaler,
-                'RobustScaler': RobustScaler,
-                'Normarlizer': Normalizer,
-                'Binarizer': Binarizer,
-                'KBinsDiscretizer': KBinsDiscretizer,
-                'KernelCenterer': KernelCenterer,
-                'QuantileTransformer': QuantileTransformer,
-                'PowerTransformer': PowerTransformer,
-                'PolynomialFeatures': PolynomialFeatures,
-                'SplineTransformer': SplineTransformer,
-                'FunctionTransfomer': FunctionTransformer
-            }
-            if preprocessor_str == 'LogTransformer()':
-                p = FunctionTransformer(np.log1p)
-            else:
-                preprocessor = re.findall(r'([a-zA-z]+)\(.*\)', preprocessor_str)[0]
-                preprocessor = preprocessor_dict[preprocessor]
-                args = re.findall(r'([a-z_]+)=(\d+\.?\d*|"[A-Za-z]+"|True|False|\(\d+\.?\d* \d+\.?\d*\))', preprocessor_str)
-                if len(args) > 0:
-                    kwargs = {}
-                    for k, v in args:
-                        if '(' not in v:
-                            kwargs[k] = ast.literal_eval(v) 
-                        else:
-                            kwargs[k] = ast.literal_eval(v.replace(' ', ',')) 
-                    p = preprocessor(**kwargs)
-                else:
-                    p = preprocessor()
-            # p = eval(preprocessor_str)
+            p = eval(preprocessor_str)
             col = col.to_numpy().reshape(-1, 1)
             col = p.fit_transform(col)
             return col
@@ -392,25 +361,45 @@ class TripletDataset(Dataset):
         if self.config['float_field_preprocess'] is None:
             return
         
-        for f in self.config['float_field_preprocess']:
-            s = f.split(':')
-            float_field = s[0]
-            preprocessor = s[1]
-            if float_field not in self.field or \
-                self.field2type[float_field] != 'float':
-                raise ValueError(f'{float_field} should be float type.')
-            self.float_field_preprocess.update({float_field: preprocessor})
-            
-            for feat in self._get_feat_list():
-                if float_field in feat.columns:
-                    col = feat[float_field]
-                    feat[float_field] = preprocess(col, preprocessor)   
-                       
-                    if 'binarizer' in preprocessor.lower() or \
-                        'discretizer' in preprocessor.lower():       
-                        self.field2type[float_field] = 'token'
-                        feat[float_field] = feat[float_field].astype(str)
+        if isinstance(self.config['float_field_preprocess'], list):
+            rest_preprocessor = None
+            for f in self.config['float_field_preprocess']:
+                s = f.split(':')
+                float_field = s[0]
+                preprocessor = s[1].replace(';', ',')
+                if float_field == 'rest':
+                    rest_preprocessor = preprocessor
+                    continue
+                elif float_field not in self.field or \
+                    self.field2type[float_field] != 'float':
+                    raise ValueError(f'{float_field} should be float type.')
                 
+                self.float_field_preprocess.update({float_field: preprocessor})
+            if rest_preprocessor is not None:
+                for f in self.field:
+                    if self.field2type[f] == 'float' and f not in self.float_field_preprocess:
+                        self.float_field_preprocess.update({f: rest_preprocessor})
+        else:
+            preprocessor = self.config['float_field_preprocess']
+            for f in self.field:
+                if self.field2type[f] != 'float':
+                    continue
+                if 'discretizer'in preprocessor.lower() and f == self.ftime:
+                    continue
+                if f == self.frating:
+                    continue
+                self.float_field_preprocess.update({f: preprocessor})
+                
+        for f, p in self.float_field_preprocess.items():    
+            for feat in self._get_feat_list():
+                if f in feat.columns:
+                    col = feat[f]
+                    feat[f] = preprocess(col, p)   
+                    
+                    if 'binarizer' in p.lower() or 'discretizer' in p.lower():       
+                        self.field2type[f] = 'token'
+                        feat[f] = feat[f].astype(str)
+            
 
     def _map_all_ids(self):
         r"""Map tokens to index."""

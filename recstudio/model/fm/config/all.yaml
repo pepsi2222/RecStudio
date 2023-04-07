@@ -2,7 +2,7 @@ data:
   fmeval: True
   low_rating_thres: ~
   binarized_rating_thres: ~
-  split_ratio: [3387880, 97972, 0]
+  split_ratio: [1016364, 29392, 0]  # for fine tune
   split_mode: entry
 
 eval:

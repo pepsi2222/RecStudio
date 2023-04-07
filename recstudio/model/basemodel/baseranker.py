@@ -50,7 +50,7 @@ class BaseRanker(Recommender):
         # token_field = set([k for k, v in data.field2type.items() if v=='token'])
         # token_field.add(data.frating)
         # data.use_field = token_field
-        data.use_field = data.field2type.keys()
+        data.use_field = data.field
 
     def _get_retriever(self, train_data):
         return None
@@ -157,11 +157,14 @@ class BaseRanker(Recommender):
             metrics = {}
             for n, f in pred_m:
                 if not n in global_m:
+                    if n == 'logloss':
+                        metrics[n] = f(result['pos_score'], result['label'])
+                        continue
                     if len(inspect.signature(f).parameters) > 2:
-                        metrics[n] = f(result['pos_score'], result['label'], 
+                        metrics[n] = f(torch.sigmoid(result['pos_score']), result['label'], 
                                        self.config['eval']['binarized_prob_thres'])
                     else:
-                        metrics[n] = f(result['pos_score'], result['label'])
+                        metrics[n] = f(torch.sigmoid(result['pos_score']), result['label'])
             if len(global_m) > 0:
                 # gather scores and labels for global metrics like AUC.
                 metrics['score'] = result['pos_score'].detach()
