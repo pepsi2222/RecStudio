@@ -345,7 +345,7 @@ class Recommender(torch.nn.Module, abc.ABC):
         for k, v in metrics.items():
             nni_result[k] = v.item()
         # The 'default' metric is used to control behavior of nni
-        nni_result['default'] = list(nni_result.values())[0]
+        nni_result['default'] = nni_result[self.val_metric]
         return nni_result
 
     def _init_parameter(self):
