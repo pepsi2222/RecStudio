@@ -145,3 +145,7 @@ datasets/*
 !datasets/ml-100k/
 
 .recstudio/
+
+nni_experiments/*
+!nni_experiments/config/
+!nni_experiments/search_space/*

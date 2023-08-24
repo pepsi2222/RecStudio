@@ -108,11 +108,12 @@ class Recommender(torch.nn.Module, abc.ABC):
 
         if tb_log_name is None:
             import time
-            tb_log_name = time.strftime(f"%Y-%m-%d-%H-%M-%S", time.localtime())
+            tb_log_name = time.strftime(f"%Y-%m-%d-%H-%M-%S-%f", time.localtime())
         if self.config['train']['tensorboard_path'] is not None:
             self.tensorboard_logger = SummaryWriter(os.path.join(self.config['train']['tensorboard_path'], tb_log_name))
         else:
             self.tensorboard_logger = SummaryWriter(os.path.join(f'./tensorboard/{self.__class__.__name__}/{train_data.name}/', tb_log_name))
+        self.logger.info(f"Tensorboard log saved in {self.tensorboard_logger.log_dir}.")
 
         self.tensorboard_logger.add_text('Configuration/model', dict2markdown_table(self.config, nested=True))
         self.tensorboard_logger.add_text('Configuration/data', dict2markdown_table(train_data.config))
