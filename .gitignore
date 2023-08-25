@@ -146,6 +146,6 @@ datasets/*
 
 .recstudio/
 
-nni_experiments/*
-!nni_experiments/config/
-!nni_experiments/search_space/*
+nni-experiments/*
+!nni-experiments/config/
+!nni-experiments/search_space/
