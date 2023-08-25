@@ -1,12 +1,12 @@
 model:
-  wide: True
+  wide: False
 
-  deep: True
+  deep: False
   mlp_layer: [128, 64]
   activation: relu
 
   dropout: 0.5
-  attention_dim: 64
+  attention_dim: 10
   num_attention_layers: 3
   n_head: 2
   

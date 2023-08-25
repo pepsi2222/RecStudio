@@ -1,0 +1,200 @@
+[2023-08-25 11:48:18] INFO Log saved in /root/autodl-tmp/xingmei/RecStudio/log/AutoInt/ml-1m/2023-08-25-11-48-18-222565.log.
+[2023-08-25 11:48:18] INFO Global seed set to 2022
+[2023-08-25 11:48:18] INFO dataset is read from ./.recstudio/ml-1m.
+[2023-08-25 11:48:25] INFO 
+Dataset Info: 
+
+=============================================================================
+interaction information: 
+field      UserID     MovieID    Rating     Timestamp  
+type       token      token      float      float      
+##         6041       3417       -          -          
+=============================================================================
+user information: 
+field      UserID     Gender     Age        Occupation Zip-code   
+type       token      token      token      token      token      
+##         6041       3          8          22         3440       
+=============================================================================
+item information: 
+field      MovieID    Title      Genres     
+type       token      token_seq  token_seq  
+##         3417       4702       19         
+=============================================================================
+Total Interactions: 999611
+Sparsity: 0.951552
+=============================================================================
+
+[2023-08-25 11:48:25] INFO 
+Model Config: 
+
+data:
+	binarized_rating_thres=3.0
+	fm_eval=False
+	neg_count=0
+	sampler=None
+	shuffle=True
+	split_mode=user_entry
+	split_ratio=[0.8, 0.1, 0.1]
+	fmeval=True
+	low_rating_thres=0.0
+eval:
+	batch_size=128
+	cutoff=[5, 10, 20]
+	val_metrics=['auc', 'logloss']
+	val_n_epoch=1
+	test_metrics=['auc', 'logloss']
+	topk=100
+	save_path=./saved/
+model:
+	embed_dim=10
+	item_bias=False
+	wide=False
+	deep=False
+	mlp_layer=[128, 64]
+	activation=relu
+	dropout=0.5
+	attention_dim=10
+	num_attention_layers=2
+	n_head=5
+	residual=True
+	residual_project=True
+	layer_norm=False
+train:
+	accelerator=gpu
+	ann=None
+	batch_size=512
+	early_stop_mode=max
+	early_stop_patience=10
+	epochs=1000
+	gpu=1
+	grad_clip_norm=None
+	init_method=xavier_normal
+	item_batch_size=1024
+	learner=adam
+	learning_rate=0.001
+	num_threads=10
+	sampling_method=none
+	sampler=uniform
+	negative_count=0
+	excluding_hist=False
+	scheduler=None
+	seed=2022
+	weight_decay=0.0
+	tensorboard_path=None
+[2023-08-25 11:48:25] INFO Tensorboard log saved in ./tensorboard/AutoInt/ml-1m/2023-08-25-11-48-18-222565.
+[2023-08-25 11:48:25] WARNING If you want to use all fields, the float fields might need a scaler. This can be set in dataset.yaml
+[2023-08-25 11:48:25] WARNING No retriever is used, topk metrics is not supported.
+[2023-08-25 11:48:25] INFO save_dir:./saved/
+[2023-08-25 11:48:25] INFO AutoInt(
+  (loss_fn): BCEWithLogitLoss()
+  (embedding): Embeddings(
+    num_features=9, embed_dim=10, reduction=mean
+    (embeddings): ModuleDict(
+      (Gender): Embedding(3, 10, padding_idx=0)
+      (Timestamp): DenseEmbedding(
+        embedding_dim=10, bias=False, batch_norm=True
+        (batch_norm_layer): BatchNorm1d(1, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (weight): Linear(in_features=1, out_features=10, bias=False)
+      )
+      (MovieID): Embedding(3417, 10, padding_idx=0)
+      (Age): Embedding(8, 10, padding_idx=0)
+      (Zip-code): Embedding(3440, 10, padding_idx=0)
+      (Genres): Embedding(19, 10, padding_idx=0)
+      (Title): Embedding(4702, 10, padding_idx=0)
+      (UserID): Embedding(6041, 10, padding_idx=0)
+      (Occupation): Embedding(22, 10, padding_idx=0)
+    )
+    (seq_pooling_layer): SeqPoolingLayer(pooling_type=mean, keepdim=False)
+  )
+  (int): Sequential(
+    (0): SelfAttentionInteractingLayer(
+      attention_dim=10, n_head=5, dropout=0.5, residual=True, layer_norm=False
+      (attn): AttentionLayer(
+        (attn_layer): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=10, out_features=10, bias=True)
+        )
+      )
+      (res): Linear(in_features=10, out_features=10, bias=True)
+    )
+    (1): SelfAttentionInteractingLayer(
+      attention_dim=10, n_head=5, dropout=0.5, residual=True, layer_norm=False
+      (attn): AttentionLayer(
+        (attn_layer): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=10, out_features=10, bias=True)
+        )
+      )
+      (res): Linear(in_features=10, out_features=10, bias=True)
+    )
+  )
+  (fc): Linear(in_features=90, out_features=1, bias=True)
+)
+[2023-08-25 11:48:54] INFO Training: Epoch=  0 [logloss=0.3409 auc=0.8253 train_loss_0=0.3677]
+[2023-08-25 11:48:54] INFO Train time: 23.11107s. Valid time: 4.50727s. GPU RAM: 0.03/39.39 GB
+[2023-08-25 11:48:54] INFO auc improved. Best value: 0.8253
+[2023-08-25 11:48:54] INFO Best model checkpoint saved in ./saved/AutoInt/ml-1m/2023-08-25-11-48-18-222565.ckpt.
+[2023-08-25 11:49:25] INFO Training: Epoch=  1 [logloss=0.3385 auc=0.8283 train_loss_0=0.3372]
+[2023-08-25 11:49:25] INFO Train time: 26.95012s. Valid time: 4.10627s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:49:25] INFO auc improved. Best value: 0.8283
+[2023-08-25 11:49:25] INFO Best model checkpoint saved in ./saved/AutoInt/ml-1m/2023-08-25-11-48-18-222565.ckpt.
+[2023-08-25 11:49:56] INFO Training: Epoch=  2 [logloss=0.3363 auc=0.8304 train_loss_0=0.3339]
+[2023-08-25 11:49:56] INFO Train time: 27.21609s. Valid time: 4.12888s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:49:56] INFO auc improved. Best value: 0.8304
+[2023-08-25 11:49:56] INFO Best model checkpoint saved in ./saved/AutoInt/ml-1m/2023-08-25-11-48-18-222565.ckpt.
+[2023-08-25 11:50:30] INFO Training: Epoch=  3 [logloss=0.3325 auc=0.8351 train_loss_0=0.3295]
+[2023-08-25 11:50:30] INFO Train time: 29.05870s. Valid time: 4.01996s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:50:30] INFO auc improved. Best value: 0.8351
+[2023-08-25 11:50:30] INFO Best model checkpoint saved in ./saved/AutoInt/ml-1m/2023-08-25-11-48-18-222565.ckpt.
+[2023-08-25 11:51:05] INFO Training: Epoch=  4 [logloss=0.3302 auc=0.8383 train_loss_0=0.3238]
+[2023-08-25 11:51:06] INFO Train time: 31.65057s. Valid time: 4.16959s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:51:06] INFO auc improved. Best value: 0.8383
+[2023-08-25 11:51:06] INFO Best model checkpoint saved in ./saved/AutoInt/ml-1m/2023-08-25-11-48-18-222565.ckpt.
+[2023-08-25 11:51:36] INFO Training: Epoch=  5 [logloss=0.3284 auc=0.8407 train_loss_0=0.3194]
+[2023-08-25 11:51:36] INFO Train time: 26.31558s. Valid time: 4.08273s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:51:36] INFO auc improved. Best value: 0.8407
+[2023-08-25 11:51:36] INFO Best model checkpoint saved in ./saved/AutoInt/ml-1m/2023-08-25-11-48-18-222565.ckpt.
+[2023-08-25 11:52:07] INFO Training: Epoch=  6 [logloss=0.3280 auc=0.8416 train_loss_0=0.3155]
+[2023-08-25 11:52:07] INFO Train time: 26.86797s. Valid time: 4.07895s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:52:07] INFO auc improved. Best value: 0.8416
+[2023-08-25 11:52:07] INFO Best model checkpoint saved in ./saved/AutoInt/ml-1m/2023-08-25-11-48-18-222565.ckpt.
+[2023-08-25 11:52:37] INFO Training: Epoch=  7 [logloss=0.3275 auc=0.8430 train_loss_0=0.3124]
+[2023-08-25 11:52:37] INFO Train time: 26.05066s. Valid time: 4.12357s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:52:37] INFO auc improved. Best value: 0.8430
+[2023-08-25 11:52:37] INFO Best model checkpoint saved in ./saved/AutoInt/ml-1m/2023-08-25-11-48-18-222565.ckpt.
+[2023-08-25 11:53:08] INFO Training: Epoch=  8 [logloss=0.3270 auc=0.8436 train_loss_0=0.3097]
+[2023-08-25 11:53:08] INFO Train time: 26.84395s. Valid time: 4.04853s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:53:08] INFO auc improved. Best value: 0.8436
+[2023-08-25 11:53:08] INFO Best model checkpoint saved in ./saved/AutoInt/ml-1m/2023-08-25-11-48-18-222565.ckpt.
+[2023-08-25 11:53:38] INFO Training: Epoch=  9 [logloss=0.3280 auc=0.8440 train_loss_0=0.3077]
+[2023-08-25 11:53:39] INFO Train time: 26.42614s. Valid time: 4.05342s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:53:39] INFO auc improved. Best value: 0.8440
+[2023-08-25 11:53:39] INFO Best model checkpoint saved in ./saved/AutoInt/ml-1m/2023-08-25-11-48-18-222565.ckpt.
+[2023-08-25 11:54:09] INFO Training: Epoch= 10 [logloss=0.3283 auc=0.8433 train_loss_0=0.3058]
+[2023-08-25 11:54:09] INFO Train time: 26.57142s. Valid time: 4.08271s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:54:39] INFO Training: Epoch= 11 [logloss=0.3271 auc=0.8443 train_loss_0=0.3045]
+[2023-08-25 11:54:39] INFO Train time: 25.09295s. Valid time: 4.30524s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:54:39] INFO auc improved. Best value: 0.8443
+[2023-08-25 11:54:39] INFO Best model checkpoint saved in ./saved/AutoInt/ml-1m/2023-08-25-11-48-18-222565.ckpt.
+[2023-08-25 11:55:13] INFO Training: Epoch= 12 [logloss=0.3282 auc=0.8435 train_loss_0=0.3036]
+[2023-08-25 11:55:13] INFO Train time: 29.67584s. Valid time: 4.29145s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:55:43] INFO Training: Epoch= 13 [logloss=0.3283 auc=0.8435 train_loss_0=0.3021]
+[2023-08-25 11:55:43] INFO Train time: 25.95894s. Valid time: 4.16601s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:56:13] INFO Training: Epoch= 14 [logloss=0.3291 auc=0.8431 train_loss_0=0.3010]
+[2023-08-25 11:56:13] INFO Train time: 25.63114s. Valid time: 4.40917s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:56:43] INFO Training: Epoch= 15 [logloss=0.3306 auc=0.8425 train_loss_0=0.2999]
+[2023-08-25 11:56:43] INFO Train time: 25.52271s. Valid time: 4.23396s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:57:14] INFO Training: Epoch= 16 [logloss=0.3305 auc=0.8427 train_loss_0=0.2988]
+[2023-08-25 11:57:14] INFO Train time: 27.08615s. Valid time: 4.59151s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:57:45] INFO Training: Epoch= 17 [logloss=0.3306 auc=0.8427 train_loss_0=0.2976]
+[2023-08-25 11:57:45] INFO Train time: 26.27529s. Valid time: 4.51035s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:58:13] INFO Training: Epoch= 18 [logloss=0.3322 auc=0.8421 train_loss_0=0.2964]
+[2023-08-25 11:58:13] INFO Train time: 23.61066s. Valid time: 3.97577s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:58:34] INFO Training: Epoch= 19 [logloss=0.3321 auc=0.8420 train_loss_0=0.2953]
+[2023-08-25 11:58:34] INFO Train time: 17.36842s. Valid time: 3.60219s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:58:55] INFO Training: Epoch= 20 [logloss=0.3333 auc=0.8420 train_loss_0=0.2938]
+[2023-08-25 11:58:56] INFO Train time: 17.36475s. Valid time: 4.23000s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:59:18] INFO Training: Epoch= 21 [logloss=0.3343 auc=0.8420 train_loss_0=0.2925]
+[2023-08-25 11:59:18] INFO Train time: 17.86150s. Valid time: 4.65500s. GPU RAM: 0.04/39.39 GB
+[2023-08-25 11:59:18] INFO Early stopped. Since the metric auc haven't been improved for 10 epochs.
+[2023-08-25 11:59:18] INFO The best score of auc is 0.8443 on epoch 11
+[2023-08-25 11:59:18] INFO Best model checkpoint saved in ./saved/AutoInt/ml-1m/2023-08-25-11-48-18-222565.ckpt.
+[2023-08-25 11:59:22] INFO Testing:  [logloss=0.3252 auc=0.8454]

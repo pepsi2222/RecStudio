@@ -2,6 +2,9 @@ data:
   fmeval: True
   low_rating_thres: 0.0
   binarized_rating_thres: 3.0
+  
+model:
+  embed_dim: 10
 
 eval:
   val_metrics: [auc, logloss]

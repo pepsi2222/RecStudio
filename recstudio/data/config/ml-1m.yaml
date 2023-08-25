@@ -12,12 +12,12 @@ inter_feat_field: [*u, *i, *r, *t]
 inter_feat_header: ~
 
 
-user_feat_name: ~ #[users.dat]
+user_feat_name: [users.dat]
 user_feat_field: [[*u, Gender:token, Age:token, Occupation:token, Zip-code:token]]
 user_feat_header: ~
 
 
-item_feat_name: ~ #[movies.dat]
+item_feat_name: [movies.dat]
 item_feat_field: [[*i, Title:token_seq:" ", Genres:token_seq:"|")]]
 item_feat_header: ~
 
